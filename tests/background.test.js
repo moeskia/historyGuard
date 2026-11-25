@@ -553,3 +553,278 @@ test('标签页不存在时通过回调消费 runtime.lastError 而不抛出未�
 
   assert.equal(lastErrorReadCount, 2);
 });
+
+function createIconMock() {
+  const mock = createMockChrome();
+  const tabs = [
+    { id: 1, url: 'https://example.test/private/1' },
+    { id: 2, url: 'https://other.test/' }
+  ];
+  const iconCalls = [];
+  const listeners = {};
+  mock.chromeApi.action = {
+    async setIcon(details) {
+      iconCalls.push(details);
+    }
+  };
+  mock.chromeApi.tabs = {
+    async query() {
+      return tabs.map((tab) => ({ ...tab }));
+    },
+    async get(tabId) {
+      return tabs.find((tab) => tab.id === tabId);
+    },
+    onRemoved: {
+      addListener(listener) {
+        listeners.removed = listener;
+      }
+    }
+  };
+  return { ...mock, tabs, iconCalls, listeners };
+}
+
+const nextTurn = () => new Promise((resolve) => setImmediate(resolve));
+
+test('批量删除最多四路并发、URL 去重、跨日归因且只保存一次', async () => {
+  const urls = Array.from({ length: 10 }, (_, i) =>
+    `${i === 9 ? 'http' : 'https'}://example.test/private/${i + 1}`
+  );
+  const mock = createMockChrome({
+    initialHistory: [...urls, urls[0], 'https://other.test/', 'not-a-url']
+  });
+  let currentTime = new Date('2026-11-25T23:59:50');
+  const controller = createBackgroundController({ chromeApi: mock.chromeApi, now: () => currentTime });
+  const pending = [];
+  const deleteCalls = [];
+  let active = 0;
+  let maxActive = 0;
+  let writes = 0;
+  const originalSet = mock.chromeApi.storage.local.set;
+  mock.chromeApi.storage.local.set = async (state) => {
+    writes += 1;
+    await originalSet(state);
+  };
+  mock.chromeApi.history.deleteUrl = ({ url }) => new Promise((resolve) => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    deleteCalls.push(url);
+    pending.push(() => {
+      active -= 1;
+      mock.deletedUrls.push(url);
+      resolve();
+    });
+  });
+  const importing = controller.handleMessage({
+    type: 'importRules',
+    items: [
+      'https://example.test/private/*',
+      '*://*.example.test/*',
+      { pattern: '*://other.test/*', enabled: false }
+    ]
+  });
+  let readFinished = false;
+  const reading = controller.handleMessage({ type: 'getState' }).then((result) => {
+    readFinished = true;
+    return result;
+  });
+  await nextTurn();
+  assert.equal(deleteCalls.length, 4);
+  assert.equal(readFinished, false);
+  assert.equal(writes, 0);
+  for (let i = 0; i < urls.length; i += 1) {
+    assert.ok(pending.length > 0);
+    currentTime = new Date(i < 5
+      ? `2026-11-25T23:59:${51 + i}`
+      : `2026-11-26T00:00:0${i - 5}`);
+    pending.shift()();
+    await nextTurn();
+  }
+  const result = await importing;
+  const read = await reading;
+  assert.equal(maxActive, 4);
+  assert.equal(active, 0);
+  assert.equal(deleteCalls.length, 10);
+  assert.deepEqual(new Set(deleteCalls), new Set(urls));
+  assert.equal(result.cleanedExistingCount, 10);
+  assert.equal(result.state.rules[0].cleanedCount, 9);
+  assert.equal(result.state.rules[1].cleanedCount, 1);
+  assert.equal(result.state.rules[2].cleanedCount, 0);
+  assert.equal(result.state.rules[0].todayCleaned, 4);
+  assert.equal(result.state.rules[1].todayCleaned, 1);
+  assert.equal(result.state.stats.todayCleaned, 5);
+  assert.equal(result.state.stats.todayDate, '2026-11-26');
+  assert.equal(result.state.stats.lastCleanedAt, currentTime.toISOString());
+  assert.deepEqual(read.state, result.state);
+  assert.equal(writes, 1);
+  assert.deepEqual(mock.storageData.historyFilterState, result.state);
+});
+
+test('批量删除部分失败只统计实际成功的 URL，并返回最后的错误', async () => {
+  const successUrl = 'https://example.test/success';
+  const failedUrl = 'https://example.test/fail';
+  const mock = createMockChrome({ initialHistory: [successUrl, failedUrl, successUrl] });
+  const pending = new Map();
+  mock.chromeApi.history.deleteUrl = ({ url }) => new Promise((resolve, reject) => {
+    pending.set(url, { resolve, reject });
+  });
+  const controller = createBackgroundController({
+    chromeApi: mock.chromeApi,
+    now: () => new Date('2026-11-25T15:00:00')
+  });
+  const adding = controller.handleMessage({ type: 'addRule', pattern: '*://example.test/*' });
+  await nextTurn();
+  assert.equal(pending.size, 2);
+  pending.get(successUrl).resolve();
+  await nextTurn();
+  pending.get(failedUrl).reject(new Error('模拟部分失败'));
+  const result = await adding;
+  assert.equal(result.ok, true);
+  assert.equal(result.cleanedExistingCount, 1);
+  assert.equal(result.rule.cleanedCount, 1);
+  assert.equal(result.state.stats.totalCleaned, 1);
+  assert.match(result.lastError, /模拟部分失败/);
+  assert.deepEqual(mock.storageData.historyFilterState, result.state);
+});
+
+test('实时删除成功后立即持久化，后续访问仍串行处理', async () => {
+  const mock = createMockChrome();
+  const controller = createBackgroundController({
+    chromeApi: mock.chromeApi,
+    now: () => new Date('2026-11-25T15:00:00')
+  });
+  await controller.handleMessage({ type: 'addRule', pattern: '*://example.test/*', cleanExisting: false });
+  const pending = [];
+  const originalSet = mock.chromeApi.storage.local.set;
+  let writes = 0;
+  mock.chromeApi.storage.local.set = async (state) => {
+    writes += 1;
+    await originalSet(state);
+  };
+  mock.chromeApi.history.deleteUrl = () => new Promise((resolve) => pending.push(resolve));
+  const first = controller.handleVisited({ url: 'https://example.test/1' });
+  const second = controller.handleVisited({ url: 'https://example.test/2' });
+  await nextTurn();
+  assert.equal(pending.length, 1);
+  assert.equal(writes, 0);
+  pending.shift()();
+  await first;
+  assert.equal(writes, 1);
+  assert.equal(mock.storageData.historyFilterState.stats.totalCleaned, 1);
+  await nextTurn();
+  assert.equal(pending.length, 1);
+  pending.shift()();
+  await second;
+  assert.equal(writes, 2);
+  assert.equal(mock.storageData.historyFilterState.stats.totalCleaned, 2);
+});
+
+test('相同图标状态不重复设置，规则和总开关变化时只更新必要图标', async () => {
+  const mock = createIconMock();
+  const controller = createBackgroundController({ chromeApi: mock.chromeApi });
+  await controller.syncAllIcons();
+  assert.equal(mock.iconCalls.length, 3);
+  await controller.syncAllIcons();
+  await controller.refreshTabIconById(1);
+  await controller.refreshTabIconById(1);
+  assert.equal(mock.iconCalls.length, 3);
+  const added = await controller.handleMessage({
+    type: 'addRule', pattern: '*://example.test/*', cleanExisting: false
+  });
+  assert.equal(mock.iconCalls.length, 4);
+  assert.equal(mock.iconCalls.at(-1).path[16], 'icons/icon16-green.png');
+  await controller.handleMessage({ type: 'toggleRule', id: added.rule.id, enabled: false });
+  assert.equal(mock.iconCalls.length, 5);
+  assert.equal(mock.iconCalls.at(-1).path[16], 'icons/icon16.png');
+  await controller.handleMessage({ type: 'setGlobalEnabled', enabled: false });
+  assert.equal(mock.iconCalls.length, 8);
+  await controller.handleMessage({ type: 'setGlobalEnabled', enabled: false });
+  assert.equal(mock.iconCalls.length, 8);
+  await controller.handleMessage({ type: 'setGlobalEnabled', enabled: true });
+  assert.equal(mock.iconCalls.length, 11);
+});
+
+test('相同的进行中图标请求合并，后续不同状态按顺序设置', async () => {
+  const mock = createMockChrome({
+    initialStorage: {
+      historyFilterState: {
+        rules: [{ id: 'r1', pattern: '*://example.test/*', enabled: true }]
+      }
+    }
+  });
+  const calls = [];
+  const pending = [];
+  mock.chromeApi.action = {
+    setIcon(details) {
+      calls.push(details);
+      return new Promise((resolve) => pending.push(resolve));
+    }
+  };
+  const controller = createBackgroundController({ chromeApi: mock.chromeApi });
+  const tab = { id: 1, url: 'https://other.test/' };
+  const first = controller.refreshTabIcon(tab);
+  const duplicate = controller.refreshTabIcon({ ...tab });
+  await nextTurn();
+  assert.equal(calls.length, 1);
+  const changed = controller.refreshTabIcon({ id: 1, url: 'https://example.test/' });
+  await nextTurn();
+  assert.equal(calls.length, 1);
+  pending.shift()();
+  await nextTurn();
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls.map((call) => call.path[16]), ['icons/icon16.png', 'icons/icon16-green.png']);
+  pending.shift()();
+  await Promise.all([first, duplicate, changed]);
+  await controller.refreshTabIcon({ id: 1, url: 'https://example.test/' });
+  assert.equal(calls.length, 2);
+});
+
+test('默认及标签页图标设置失败后可重试，成功后去重', async () => {
+  const mock = createIconMock();
+  const failed = new Set();
+  mock.chromeApi.action.setIcon = async (details) => {
+    mock.iconCalls.push(details);
+    if (!failed.has(details.tabId)) {
+      failed.add(details.tabId);
+      throw new Error('模拟图标设置失败');
+    }
+  };
+  const controller = createBackgroundController({ chromeApi: mock.chromeApi });
+  await controller.syncAllIcons();
+  assert.equal(mock.iconCalls.length, 3);
+  await controller.syncAllIcons();
+  assert.equal(mock.iconCalls.length, 6);
+  await controller.syncAllIcons();
+  assert.equal(mock.iconCalls.length, 6);
+});
+
+test('标签页关闭时清理缓存，进行中请求不会恢复缓存，冷启动重新同步', async () => {
+  const mock = createIconMock();
+  const controller = createBackgroundController({ chromeApi: mock.chromeApi });
+  controller.register();
+  await controller.syncAllIcons();
+  assert.equal(mock.iconCalls.length, 3);
+  let resolveIcon;
+  mock.chromeApi.action.setIcon = (details) => {
+    mock.iconCalls.push(details);
+    if (details.tabId === 1 && !resolveIcon) {
+      return new Promise((resolve) => { resolveIcon = resolve; });
+    }
+    return Promise.resolve();
+  };
+  const adding = controller.handleMessage({
+    type: 'addRule', pattern: '*://example.test/*', cleanExisting: false
+  });
+  await nextTurn();
+  assert.equal(typeof resolveIcon, 'function');
+  const closedTab = mock.tabs.shift();
+  mock.listeners.removed(closedTab.id);
+  resolveIcon();
+  await adding;
+  assert.equal(mock.iconCalls.length, 4);
+  mock.tabs.unshift(closedTab);
+  await controller.refreshTabIcon(closedTab);
+  assert.equal(mock.iconCalls.length, 5);
+  const restarted = createBackgroundController({ chromeApi: mock.chromeApi });
+  await restarted.syncAllIcons();
+  assert.equal(mock.iconCalls.length, 8);
+});

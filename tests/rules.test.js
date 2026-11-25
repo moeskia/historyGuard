@@ -142,3 +142,84 @@ test('从当前网页生成规则', () => {
   assert.equal(parseRulePattern('*://*.www.example.com/*').rule.normalized, '*://*.example.com/*');
   assert.equal(parseRulePattern('*://www.com/*').rule.normalized, '*://*.www.com/*');
 });
+
+test('查找只解析一次 URL，并缓存有效及无效规则而不修改规则对象', (t) => {
+  const OriginalURL = globalThis.URL;
+  const OriginalRegExp = globalThis.RegExp;
+  const originalTrim = String.prototype.trim;
+  let urlParses = 0;
+  let regexCompilations = 0;
+  let invalidParses = 0;
+  t.after(() => {
+    globalThis.URL = OriginalURL;
+    globalThis.RegExp = OriginalRegExp;
+    String.prototype.trim = originalTrim;
+  });
+  globalThis.URL = class extends OriginalURL {
+    constructor(...args) {
+      super(...args);
+      urlParses += 1;
+    }
+  };
+  globalThis.RegExp = class extends OriginalRegExp {
+    constructor(...args) {
+      super(...args);
+      regexCompilations += 1;
+    }
+  };
+  String.prototype.trim = function () {
+    if (String(this) === 'invalid-rule') {
+      invalidParses += 1;
+    }
+    return originalTrim.call(this);
+  };
+  const rules = [
+    { id: 'invalid', pattern: 'invalid-rule', enabled: true },
+    { id: 'miss', pattern: '*://other.test/*', enabled: true },
+    { id: 'hit', pattern: '*://example.test/*', enabled: true }
+  ];
+  rules.forEach(Object.freeze);
+  const snapshot = JSON.stringify(rules);
+  assert.equal(findFirstMatchingRule(rules, 'https://example.test/a'), rules[2]);
+  assert.equal(findFirstMatchingRule(rules, 'https://example.test/b'), rules[2]);
+  assert.equal(urlParses, 2);
+  assert.equal(regexCompilations, 2);
+  assert.equal(invalidParses, 1);
+  assert.equal(JSON.stringify(rules), snapshot);
+});
+
+test('缓存不会影响原地编辑、启停和规则顺序', () => {
+  const first = { id: 'first', pattern: '*://example.test/*', enabled: false };
+  const second = { id: 'second', pattern: 'https://example.test/*', enabled: true };
+  const rules = [first, second];
+  const url = 'https://example.test/private/a';
+  assert.equal(findFirstMatchingRule(rules, url), second);
+  first.enabled = true;
+  assert.equal(findFirstMatchingRule(rules, url), first);
+  first.pattern = '*://other.test/*';
+  assert.equal(findFirstMatchingRule(rules, url), second);
+  assert.equal(findFirstMatchingRule(rules, 'https://other.test/'), first);
+  first.pattern = 'invalid-rule';
+  assert.equal(findFirstMatchingRule(rules, url), second);
+  first.pattern = '*://example.test/*';
+  assert.equal(findFirstMatchingRule(rules, url), first);
+  rules.reverse();
+  assert.equal(findFirstMatchingRule(rules, url), second);
+  second.enabled = false;
+  assert.equal(findFirstMatchingRule(rules, url), first);
+});
+
+test('无效 URL 和非 HTTP(S) URL 不匹配，规则对象调用方式保持兼容', () => {
+  const pattern = '*://localhost:3000/search?q=a+b*';
+  const rules = [{ id: 'r1', pattern, enabled: true }];
+  for (const url of ['not-a-url', '', 'chrome://extensions/', 'ftp://localhost:3000/search?q=a+b']) {
+    assert.equal(findFirstMatchingRule(rules, url), null);
+    assert.equal(matchRule(pattern, url), false);
+  }
+  const url = 'http://localhost:3000/search?q=a+b&x=1';
+  assert.equal(findFirstMatchingRule(rules, url), rules[0]);
+  assert.equal(matchRule(rules[0], url), true);
+  assert.equal(matchRule({ normalized: pattern }, url), true);
+  assert.equal(matchRule(parseRulePattern(pattern).rule, url), true);
+  assert.equal(matchRule('*://[::1]:3000/*', 'http://[::1]:3000/a'), true);
+});

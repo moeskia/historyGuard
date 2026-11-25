@@ -73,6 +73,8 @@ const TAB_MAP = {
   stats: { btn: tabStatsBtn, panel: statsTabPanel },
   settings: { btn: tabSettingsBtn, panel: settingsTabPanel }
 };
+let activeTabName = 'rules';
+const dirtyPanels = new Set();
 
 function showError(message) {
   hideInfo();
@@ -106,12 +108,14 @@ function hideInfo() {
 
 function switchTab(tabName) {
   const target = TAB_MAP[tabName] ? tabName : 'rules';
+  activeTabName = target;
   for (const [name, item] of Object.entries(TAB_MAP)) {
     const selected = name === target;
     item.btn.classList.toggle('active', selected);
     item.btn.setAttribute('aria-selected', String(selected));
     item.panel.classList.toggle('hidden', !selected);
   }
+  renderActivePanel();
 }
 
 async function sendMessage(payload) {
@@ -128,6 +132,14 @@ async function sendMessage(payload) {
   return response;
 }
 
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit'
+});
+
 function formatDateTime(isoString) {
   if (!isoString) {
     return '暂无';
@@ -136,13 +148,7 @@ function formatDateTime(isoString) {
   if (Number.isNaN(date.getTime())) {
     return '暂无';
   }
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
+  return DATE_TIME_FORMATTER.format(date);
 }
 
 function renderCurrentTabQuickAdd(state) {
@@ -175,7 +181,6 @@ function renderSettings(state) {
   quickAddModeSelect.value = state.quickAddMode || 'host';
   quickAddModeSelect.disabled = state.showQuickAdd === false;
   const hasRules = state.rules.length > 0;
-  settingsRuleCountBadge.textContent = `${state.rules.length} 条`;
   enableAllRulesBtn.disabled = !hasRules;
   pauseAllRulesBtn.disabled = !hasRules;
   clearAllRulesBtn.disabled = !hasRules;
@@ -201,8 +206,8 @@ function setStatsOverviewPage(page) {
 
 function renderOverviewChart(state, sortedRules) {
   const svgNs = 'http://www.w3.org/2000/svg';
-  statsDonutSvg.replaceChildren();
-  statsChartLegend.replaceChildren();
+  const svgFragment = document.createDocumentFragment();
+  const legendFragment = document.createDocumentFragment();
 
   const radius = 34;
   const circumference = 2 * Math.PI * radius;
@@ -213,7 +218,7 @@ function renderOverviewChart(state, sortedRules) {
   track.setAttribute('fill', 'none');
   track.setAttribute('stroke', '#e5e7eb');
   track.setAttribute('stroke-width', '10');
-  statsDonutSvg.appendChild(track);
+  svgFragment.appendChild(track);
 
   const activeHits = sortedRules.filter((rule) => rule.cleanedCount > 0);
   const rulesSum = activeHits.reduce((sum, rule) => sum + rule.cleanedCount, 0);
@@ -223,7 +228,9 @@ function renderOverviewChart(state, sortedRules) {
     const emptyLi = document.createElement('li');
     emptyLi.className = 'chart-empty';
     emptyLi.textContent = '暂无清理记录，命中规则后将在此展示各规则占比。';
-    statsChartLegend.appendChild(emptyLi);
+    legendFragment.appendChild(emptyLi);
+    statsDonutSvg.replaceChildren(svgFragment);
+    statsChartLegend.replaceChildren(legendFragment);
     return;
   }
 
@@ -260,7 +267,7 @@ function renderOverviewChart(state, sortedRules) {
     circle.setAttribute('stroke-width', '10');
     circle.setAttribute('stroke-dasharray', `${segLen} ${circumference}`);
     circle.setAttribute('stroke-dashoffset', String(-offset));
-    statsDonutSvg.appendChild(circle);
+    svgFragment.appendChild(circle);
     offset += segLen;
 
     const li = document.createElement('li');
@@ -286,15 +293,13 @@ function renderOverviewChart(state, sortedRules) {
     valSpan.textContent = `${seg.count} (${pct}%)`;
 
     li.append(left, valSpan);
-    statsChartLegend.appendChild(li);
+    legendFragment.appendChild(li);
   }
+  statsDonutSvg.replaceChildren(svgFragment);
+  statsChartLegend.replaceChildren(legendFragment);
 }
 
 function renderStats(state) {
-  globalStatusText.textContent = state.enabled
-    ? '已开启：自动过滤匹配的历史记录'
-    : '已暂停：当前不会自动清理任何历史记录';
-
   todayCleanedValue.textContent = String(state.stats.todayCleaned);
   totalCleanedValue.textContent = String(state.stats.totalCleaned);
   chartTotalValue.textContent = String(state.stats.totalCleaned);
@@ -303,10 +308,7 @@ function renderStats(state) {
   activeRulesValue.textContent = `${enabledRulesCount} / ${state.rules.length} 条`;
   lastCleanedText.textContent = `最近清理：${formatDateTime(state.stats.lastCleanedAt)}`;
 
-  const countText = `${state.rules.length} 条`;
-  ruleCountBadge.textContent = countText;
-  statsRuleCountBadge.textContent = countText;
-  ruleStatsList.replaceChildren();
+  const fragment = document.createDocumentFragment();
   emptyRuleStatsText.classList.toggle('hidden', state.rules.length > 0);
 
   function appendStatCard({ label, active, statusText, todayCleaned, cleanedCount, lastCleanedAt }) {
@@ -340,7 +342,7 @@ function renderStats(state) {
     metaRow.append(countSpan, timeSpan);
 
     li.append(header, metaRow);
-    ruleStatsList.appendChild(li);
+    fragment.appendChild(li);
   }
 
 
@@ -362,10 +364,11 @@ function renderStats(state) {
       lastCleanedAt: rule.lastCleanedAt
     });
   }
+  ruleStatsList.replaceChildren(fragment);
 }
 
 function renderRules(state) {
-  rulesList.replaceChildren();
+  const fragment = document.createDocumentFragment();
   emptyRulesText.classList.toggle('hidden', state.rules.length > 0);
 
   for (const rule of state.rules) {
@@ -420,7 +423,7 @@ function renderRules(state) {
 
       const cancelEdit = () => {
         editingRuleId = null;
-        renderState(currentState);
+        renderRules(currentState);
       };
 
       editInput.addEventListener('keydown', (event) => {
@@ -455,7 +458,7 @@ function renderRules(state) {
       actions.append(saveBtn, cancelBtn);
       mainRow.append(left, actions);
       li.appendChild(mainRow);
-      rulesList.appendChild(li);
+      fragment.appendChild(li);
       requestAnimationFrame(() => editInput.focus({ preventScroll: true }));
       continue;
     }
@@ -476,7 +479,7 @@ function renderRules(state) {
     editBtn.textContent = '编辑';
     editBtn.addEventListener('click', () => {
       editingRuleId = rule.id;
-      renderState(currentState);
+      renderRules(currentState);
     });
 
     const deleteBtn = document.createElement('button');
@@ -496,16 +499,40 @@ function renderRules(state) {
     actions.append(editBtn, deleteBtn);
     mainRow.append(left, actions);
     li.appendChild(mainRow);
-    rulesList.appendChild(li);
+    fragment.appendChild(li);
   }
+  rulesList.replaceChildren(fragment);
+}
+
+function renderActivePanel() {
+  if (!currentState || !dirtyPanels.has(activeTabName)) {
+    return;
+  }
+  if (activeTabName === 'rules') {
+    renderRules(currentState);
+    renderCurrentTabQuickAdd(currentState);
+  } else if (activeTabName === 'stats') {
+    renderStats(currentState);
+  } else {
+    renderSettings(currentState);
+  }
+  dirtyPanels.delete(activeTabName);
 }
 
 function renderState(state) {
   currentState = state;
-  renderStats(state);
-  renderRules(state);
-  renderSettings(state);
-  renderCurrentTabQuickAdd(state);
+  for (const name of Object.keys(TAB_MAP)) {
+    dirtyPanels.add(name);
+  }
+  globalEnabledToggle.checked = state.enabled;
+  globalStatusText.textContent = state.enabled
+    ? '已开启：自动过滤匹配的历史记录'
+    : '已暂停：当前不会自动清理任何历史记录';
+  const countText = `${state.rules.length} 条`;
+  ruleCountBadge.textContent = countText;
+  statsRuleCountBadge.textContent = countText;
+  settingsRuleCountBadge.textContent = countText;
+  renderActivePanel();
 }
 
 async function fetchActiveTabUrl() {

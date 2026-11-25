@@ -7,6 +7,7 @@ import {
   importRules,
   normalizeState,
   recordCleanupSuccess,
+  recordCleanupSuccesses,
   resetStats,
   rolloverTodayStats,
   setAllRulesEnabled,
@@ -37,6 +38,7 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
   let cachedState = null;
   let lastError = null;
   let queue = Promise.resolve();
+  const iconUpdates = new Map();
   function enqueue(task) {
     const next = queue.then(task, task);
     queue = next.catch(() => {});
@@ -122,16 +124,36 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
     });
   }
 
+  function setIconPath(tabId, path) {
+    const previous = iconUpdates.get(tabId);
+    if (previous?.path === path) {
+      return previous.promise;
+    }
+
+    const update = { path, promise: null };
+    // 同一标签页串行设置，避免旧请求覆盖新的图标状态。
+    update.promise = (previous?.promise || Promise.resolve())
+      .then(async () => {
+        if (iconUpdates.get(tabId) !== update) {
+          return;
+        }
+        const details = typeof tabId === 'number' ? { tabId, path } : { path };
+        await callChromeApi(chromeApi.action, 'setIcon', details);
+      })
+      .catch(() => {
+        if (iconUpdates.get(tabId) === update) {
+          iconUpdates.delete(tabId);
+        }
+      });
+    iconUpdates.set(tabId, update);
+    return update.promise;
+  }
+
   async function setTabIcon(state, tab) {
     if (typeof chromeApi.action?.setIcon !== 'function' || typeof tab?.id !== 'number' || tab.id < 0) {
       return;
     }
-    const path = resolveIconPathForUrl(state, tab.url);
-    try {
-      await callChromeApi(chromeApi.action, 'setIcon', { tabId: tab.id, path });
-    } catch {
-      // 标签页已关闭等瞬态异常忽略
-    }
+    await setIconPath(tab.id, resolveIconPathForUrl(state, tab.url));
   }
 
   async function refreshAllTabIcons(state) {
@@ -139,11 +161,7 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
       return;
     }
     const defaultPath = state.enabled ? ICON_PATHS.default : ICON_PATHS.disabled;
-    try {
-      await callChromeApi(chromeApi.action, 'setIcon', { path: defaultPath });
-    } catch {
-      // 忽略异常
-    }
+    await setIconPath(undefined, defaultPath);
     if (typeof chromeApi.tabs?.query !== 'function') {
       return;
     }
@@ -197,20 +215,25 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
       }
     }
 
-    let nextState = initialState;
-    let cleanedExistingCount = 0;
-    for (const [url, matchedRule] of matchedByUrl.entries()) {
-      try {
-        await chromeApi.history.deleteUrl({ url });
-        nextState = recordCleanupSuccess(nextState, matchedRule.id, now());
-        cleanedExistingCount += 1;
-        lastError = null;
-      } catch (err) {
-        lastError = err?.message ? `删除历史记录失败：${err.message}` : '删除历史记录失败';
+    const entries = matchedByUrl.entries();
+    const successes = [];
+    async function deleteMatches() {
+      for (const [url, matchedRule] of entries) {
+        try {
+          await chromeApi.history.deleteUrl({ url });
+          successes.push({ ruleId: matchedRule.id, at: new Date(now()) });
+          lastError = null;
+        } catch (err) {
+          lastError = err?.message ? `删除历史记录失败：${err.message}` : '删除历史记录失败';
+        }
       }
     }
+    await Promise.all(Array.from({ length: Math.min(4, matchedByUrl.size) }, () => deleteMatches()));
 
-    return { state: nextState, cleanedExistingCount };
+    return {
+      state: recordCleanupSuccesses(initialState, successes),
+      cleanedExistingCount: successes.length
+    };
   }
   async function handleVisited(historyItem) {
     if (!historyItem || typeof historyItem.url !== 'string') {
@@ -392,6 +415,10 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
       if (changeInfo?.url || changeInfo?.status === 'loading' || changeInfo?.status === 'complete') {
         void refreshTabIcon(tab);
       }
+    });
+
+    chromeApi.tabs?.onRemoved?.addListener((tabId) => {
+      iconUpdates.delete(tabId);
     });
 
     chromeApi.runtime?.onStartup?.addListener(() => {
