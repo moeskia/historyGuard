@@ -1,11 +1,31 @@
 {
-  "name": "chrome-history-filter",
+  "name": "historyguard",
   "version": "1.1.0",
   "private": true,
   "type": "module",
+  "description": "Chrome Manifest V3 extension that automatically filters and cleans matching browsing history using wildcard rules.",
+  "license": "MIT",
+  "author": "MoeShadow",
+  "homepage": "https://github.com/moeskia/historyGuard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moeskia/historyGuard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/moeskia/historyGuard/issues"
+  },
+  "keywords": [
+    "chrome-extension",
+    "manifest-v3",
+    "history",
+    "privacy",
+    "wildcard-rules"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "benchmark": "node scripts/benchmark.js",
     "pack": "node scripts/pack.js"
   }
 }
