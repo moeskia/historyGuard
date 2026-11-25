@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "HistoryGuard"
+  },
+  "extDescription": {
+    "message": "Filtra y limpia automáticamente el historial de Chrome coincidente mediante reglas con comodines."
+  }
+}

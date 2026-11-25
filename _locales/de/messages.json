@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "HistoryGuard"
+  },
+  "extDescription": {
+    "message": "Filtert und bereinigt passenden Chrome-Verlauf automatisch anhand von Platzhalterregeln."
+  }
+}

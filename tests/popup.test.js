@@ -115,10 +115,19 @@ function createState() {
   return state;
 }
 
-async function mountPopup(t, state = createState(), activeTabUrl = 'https://example.test/private/1') {
+async function mountPopup(
+  t,
+  state = createState(),
+  activeTabUrl = 'https://example.test/private/1',
+  uiLanguage = 'zh-CN'
+) {
   const elements = new Map();
+  const parsedElements = [];
   const created = [];
+  const dots = [];
   const document = {
+    documentElement: { lang: 'en' },
+    title: 'HistoryGuard',
     getElementById: (id) => elements.get(id) || null,
     createElement(tag) {
       const element = new MockElement(tag, document);
@@ -127,23 +136,48 @@ async function mountPopup(t, state = createState(), activeTabUrl = 'https://exam
     },
     createElementNS: (_namespace, tag) => document.createElement(tag),
     createDocumentFragment: () => new MockElement('#fragment', document),
-    querySelectorAll: () => dots
+    querySelectorAll(selector) {
+      if (selector === '[data-stats-page]') {
+        return dots;
+      }
+      const attrMatch = /^\[([a-z0-9-]+)\]$/i.exec(selector);
+      if (attrMatch) {
+        const attrName = attrMatch[1];
+        return parsedElements.filter((el) => el.attributes.has(attrName));
+      }
+      return [];
+    }
   };
   document.body = document.createElement('body');
-  for (const match of html.matchAll(/<([a-z][\w-]*)\b([^>]*\bid="([^"]+)"[^>]*)>/gi)) {
+  for (const match of html.matchAll(/<([a-z][\w-]*)\b([^>]*)>/gi)) {
+    const attrsText = match[2];
+    const id = /\bid="([^"]+)"/.exec(attrsText)?.[1];
+    const hasI18n = /\bdata-i18n(?:-placeholder|-aria-label|-title)?="([^"]+)"/.test(attrsText);
+    const statsPage = /\bdata-stats-page="([^"]+)"/.exec(attrsText)?.[1];
+    if (!id && !hasI18n && statsPage === undefined) {
+      continue;
+    }
     const element = document.createElement(match[1]);
-    element.id = match[3];
-    element.className = /\bclass="([^"]*)"/.exec(match[2])?.[1] || '';
-    elements.set(element.id, element);
+    element.className = /\bclass="([^"]*)"/.exec(attrsText)?.[1] || '';
+    for (const attrMatch of attrsText.matchAll(/\b(data-[a-z0-9-]+)="([^"]*)"/gi)) {
+      element.setAttribute(attrMatch[1], attrMatch[2]);
+    }
+    if (id) {
+      element.id = id;
+      elements.set(id, element);
+    }
+    if (statsPage !== undefined) {
+      element.dataset.statsPage = statsPage;
+      dots.push(element);
+    }
+    parsedElements.push(element);
   }
-  const dots = [0, 1].map((page) => {
-    const dot = document.createElement('button');
-    dot.dataset.statsPage = String(page);
-    return dot;
-  });
   let storedState = structuredClone(state);
   const messages = [];
   const chromeApi = {
+    i18n: {
+      getUILanguage: () => uiLanguage
+    },
     storage: { local: {
       async get(key) { return { [key]: structuredClone(storedState) }; },
       async set(data) { storedState = structuredClone(data.historyFilterState); }
@@ -393,4 +427,35 @@ test('不支持的页面禁用快捷添加，校验失败不重建列表，JSON 
   ui.get('importRulesFileInput').files = [{ async text() { return '{invalid json'; } }];
   await ui.fire('importRulesFileInput', 'change');
   assert.match(ui.get('errorText').textContent, /JSON 文件格式无效/);
+});
+
+test('支持在设置中切换语言并实时本地化界面、错误提示与日期格式，auto 跟随浏览器语言', async (t) => {
+  const ui = await mountPopup(t, createState(), 'chrome://extensions/', 'ja-JP');
+  assert.equal(ui.document.documentElement.lang, 'ja');
+  assert.equal(ui.get('tabRulesBtn').textContent, 'ルール管理');
+  assert.equal(ui.get('ruleCountBadge').textContent, '2 件');
+
+  await ui.fire('tabSettingsBtn');
+  assert.equal(ui.get('languageSelect').value, 'auto');
+  ui.get('languageSelect').value = 'en';
+  await ui.fire('languageSelect', 'change');
+
+  assert.equal(ui.document.documentElement.lang, 'en');
+  assert.equal(ui.get('tabRulesBtn').textContent, 'Rules');
+  assert.equal(ui.get('tabStatsBtn').textContent, 'Stats');
+  assert.equal(ui.get('tabSettingsBtn').textContent, 'Settings');
+  assert.equal(ui.get('settingsRuleCountBadge').textContent, '2 rules');
+  assert.match(ui.get('globalStatusText').textContent, /Active: automatically filtering/);
+
+  await ui.fire('tabRulesBtn');
+  assert.equal(ui.get('currentTabInput').placeholder, 'Quick add is not supported on this page');
+  assert.match(ui.get('currentTabHint').textContent, /chrome:\/\/ pages are not supported/);
+
+  ui.get('newRuleInput').value = '*://example.test/*';
+  await ui.fire('addRuleForm', 'submit');
+  assert.match(ui.get('errorText').textContent, /An identical rule already exists/);
+
+  await ui.fire('tabStatsBtn');
+  assert.equal(ui.get('activeRulesValue').textContent, '1 / 2 rules');
+  assert.equal(ui.formatterCount(), 1);
 });

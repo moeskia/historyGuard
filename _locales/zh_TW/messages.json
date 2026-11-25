@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "HistoryGuard"
+  },
+  "extDescription": {
+    "message": "根據萬用字元規則自動過濾並清理相符的 Chrome 歷史記錄。"
+  }
+}

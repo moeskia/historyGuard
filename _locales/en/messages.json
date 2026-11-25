@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "HistoryGuard"
+  },
+  "extDescription": {
+    "message": "Automatically filter and clean matching Chrome browsing history using wildcard rules."
+  }
+}

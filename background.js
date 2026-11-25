@@ -37,8 +37,26 @@ const ICON_PATHS = {
 export function createBackgroundController({ chromeApi, now = () => new Date() }) {
   let cachedState = null;
   let lastError = null;
+  let lastErrorCode = null;
+  let lastErrorParams = null;
   let queue = Promise.resolve();
   const iconUpdates = new Map();
+
+  function setLastError(error, code = null, params = null) {
+    lastError = error;
+    lastErrorCode = code;
+    lastErrorParams = params;
+  }
+
+  function clearLastError() {
+    lastError = null;
+    lastErrorCode = null;
+    lastErrorParams = null;
+  }
+
+  function lastErrorFields() {
+    return { lastError, lastErrorCode, lastErrorParams };
+  }
   function enqueue(task) {
     const next = queue.then(task, task);
     queue = next.catch(() => {});
@@ -201,7 +219,15 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
     try {
       items = await chromeApi.history.search({ text: '', startTime: 0, maxResults: 0 });
     } catch (err) {
-      lastError = err?.message ? `扫描历史记录失败：${err.message}` : '扫描历史记录失败';
+      if (err?.message) {
+        setLastError(
+          `扫描历史记录失败：${err.message}`,
+          'errScanHistoryFailedDetail',
+          { detail: err.message }
+        );
+      } else {
+        setLastError('扫描历史记录失败', 'errScanHistoryFailed');
+      }
       return { state: initialState, cleanedExistingCount: 0 };
     }
 
@@ -222,9 +248,17 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
         try {
           await chromeApi.history.deleteUrl({ url });
           successes.push({ ruleId: matchedRule.id, at: new Date(now()) });
-          lastError = null;
+          clearLastError();
         } catch (err) {
-          lastError = err?.message ? `删除历史记录失败：${err.message}` : '删除历史记录失败';
+          if (err?.message) {
+            setLastError(
+              `删除历史记录失败：${err.message}`,
+              'errDeleteHistoryFailedDetail',
+              { detail: err.message }
+            );
+          } else {
+            setLastError('删除历史记录失败', 'errDeleteHistoryFailed');
+          }
         }
       }
     }
@@ -254,20 +288,34 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
       try {
         await chromeApi.history.deleteUrl({ url: historyItem.url });
       } catch (err) {
-        lastError = err?.message ? `删除历史记录失败：${err.message}` : '删除历史记录失败';
-        return { matched: true, deleted: false, error: lastError };
+        if (err?.message) {
+          setLastError(
+            `删除历史记录失败：${err.message}`,
+            'errDeleteHistoryFailedDetail',
+            { detail: err.message }
+          );
+        } else {
+          setLastError('删除历史记录失败', 'errDeleteHistoryFailed');
+        }
+        return {
+          matched: true,
+          deleted: false,
+          error: lastError,
+          errorCode: lastErrorCode,
+          errorParams: lastErrorParams
+        };
       }
 
       const nextState = recordCleanupSuccess(state, matchedRule.id, now());
       await saveState(nextState);
-      lastError = null;
+      clearLastError();
       return { matched: true, deleted: true, ruleId: matchedRule.id };
     });
   }
 
   async function handleMessage(message) {
     if (!message || typeof message.type !== 'string') {
-      return { ok: false, error: '无效的消息格式' };
+      return { ok: false, error: '无效的消息格式', errorCode: 'errInvalidMessage' };
     }
 
     return enqueue(async () => {
@@ -275,35 +323,35 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
 
       switch (message.type) {
         case 'getState': {
-          return { ok: true, state, lastError };
+          return { ok: true, state, ...lastErrorFields() };
         }
         case 'setGlobalEnabled': {
           const nextState = setGlobalEnabled(state, message.enabled);
           await saveState(nextState);
           await refreshAllTabIcons(nextState);
-          return { ok: true, state: nextState, lastError };
+          return { ok: true, state: nextState, ...lastErrorFields() };
         }
         case 'setCleanHistoryOnAdd': {
           const nextState = setCleanHistoryOnAdd(state, message.enabled);
           await saveState(nextState);
-          return { ok: true, state: nextState, lastError };
+          return { ok: true, state: nextState, ...lastErrorFields() };
         }
         case 'updateSettings': {
           const nextState = updateSettings(state, message.settings);
           await saveState(nextState);
-          return { ok: true, state: nextState, lastError };
+          return { ok: true, state: nextState, ...lastErrorFields() };
         }
         case 'setAllRulesEnabled': {
           const nextState = setAllRulesEnabled(state, message.enabled);
           await saveState(nextState);
           await refreshAllTabIcons(nextState);
-          return { ok: true, state: nextState, lastError };
+          return { ok: true, state: nextState, ...lastErrorFields() };
         }
         case 'clearAllRules': {
           const nextState = clearAllRules(state);
           await saveState(nextState);
           await refreshAllTabIcons(nextState);
-          return { ok: true, state: nextState, lastError };
+          return { ok: true, state: nextState, ...lastErrorFields() };
         }
         case 'importRules': {
           const res = importRules(state, message.items, now());
@@ -324,7 +372,7 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
             skippedDuplicate: res.skippedDuplicate,
             skippedInvalid: res.skippedInvalid,
             cleanedExistingCount: cleaned.cleanedExistingCount,
-            lastError
+            ...lastErrorFields()
           };
         }
         case 'addRule': {
@@ -347,7 +395,7 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
             state: cleaned.state,
             rule: updatedRule,
             cleanedExistingCount: cleaned.cleanedExistingCount,
-            lastError
+            ...lastErrorFields()
           };
         }
         case 'updateRule': {
@@ -357,7 +405,7 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
           }
           await saveState(res.state);
           await refreshAllTabIcons(res.state);
-          return { ok: true, state: res.state, rule: res.rule, lastError };
+          return { ok: true, state: res.state, rule: res.rule, ...lastErrorFields() };
         }
         case 'toggleRule': {
           const res = toggleRule(state, message.id, message.enabled);
@@ -366,7 +414,7 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
           }
           await saveState(res.state);
           await refreshAllTabIcons(res.state);
-          return { ok: true, state: res.state, lastError };
+          return { ok: true, state: res.state, ...lastErrorFields() };
         }
         case 'deleteRule': {
           const res = deleteRule(state, message.id);
@@ -375,20 +423,25 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
           }
           await saveState(res.state);
           await refreshAllTabIcons(res.state);
-          return { ok: true, state: res.state, lastError };
+          return { ok: true, state: res.state, ...lastErrorFields() };
         }
         case 'resetStats': {
           const nextState = resetStats(state, now());
           await saveState(nextState);
-          lastError = null;
-          return { ok: true, state: nextState, lastError };
+          clearLastError();
+          return { ok: true, state: nextState, ...lastErrorFields() };
         }
         case 'clearError': {
-          lastError = null;
-          return { ok: true, state, lastError };
+          clearLastError();
+          return { ok: true, state, ...lastErrorFields() };
         }
         default:
-          return { ok: false, error: `未知操作：${message.type}` };
+          return {
+            ok: false,
+            error: `未知操作：${message.type}`,
+            errorCode: 'errUnknownAction',
+            errorParams: { action: message.type }
+          };
       }
     });
   }
@@ -435,7 +488,8 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
         .catch((err) => {
           sendResponse({
             ok: false,
-            error: err?.message || '后台处理失败'
+            error: err?.message || '后台处理失败',
+            errorCode: err?.message ? undefined : 'errBackgroundFailed'
           });
         });
       return true;

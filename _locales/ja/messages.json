@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "HistoryGuard"
+  },
+  "extDescription": {
+    "message": "ワイルドカードルールに基づいて一致する Chrome の閲覧履歴を自動的に除外・削除します。"
+  }
+}

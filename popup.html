@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,11 +12,11 @@
         <div class="brand">
           <img class="brand-icon" src="icons/icon48.png" alt="" width="28" height="28" />
           <div>
-            <h1 class="title">HistoryGuard</h1>
-            <p id="globalStatusText" class="subtitle">正在加载状态...</p>
+            <h1 class="title" data-i18n="appTitle">HistoryGuard</h1>
+            <p id="globalStatusText" class="subtitle" data-i18n="statusLoading">正在加载状态...</p>
           </div>
         </div>
-        <label class="switch" aria-label="自动清理总开关">
+        <label class="switch" aria-label="自动清理总开关" data-i18n-aria-label="globalSwitchAria">
           <input id="globalEnabledToggle" type="checkbox" />
           <span class="slider"></span>
         </label>
@@ -24,15 +24,15 @@
 
       <div id="errorBanner" class="banner banner-error hidden" role="alert">
         <span id="errorText"></span>
-        <button id="dismissErrorBtn" class="btn-link" type="button">关闭</button>
+        <button id="dismissErrorBtn" class="btn-link" type="button" data-i18n="bannerClose">关闭</button>
       </div>
 
       <div id="infoBanner" class="banner banner-info hidden" role="status">
         <span id="infoText"></span>
-        <button id="dismissInfoBtn" class="btn-link" type="button">关闭</button>
+        <button id="dismissInfoBtn" class="btn-link" type="button" data-i18n="bannerClose">关闭</button>
       </div>
 
-      <nav class="tabs" role="tablist" aria-label="功能页面切换">
+      <nav class="tabs" role="tablist" aria-label="功能页面切换" data-i18n-aria-label="tabsAria">
         <button
           id="tabRulesBtn"
           class="tab-btn active"
@@ -41,6 +41,7 @@
           aria-selected="true"
           aria-controls="rulesTabPanel"
           data-tab="rules"
+          data-i18n="tabRules"
         >
           规则管理
         </button>
@@ -52,6 +53,7 @@
           aria-selected="false"
           aria-controls="statsTabPanel"
           data-tab="stats"
+          data-i18n="tabStats"
         >
           清理统计
         </button>
@@ -63,6 +65,7 @@
           aria-selected="false"
           aria-controls="settingsTabPanel"
           data-tab="settings"
+          data-i18n="tabSettings"
         >
           设置
         </button>
@@ -70,7 +73,7 @@
 
       <section id="rulesTabPanel" class="tab-panel" role="tabpanel" aria-labelledby="tabRulesBtn">
         <section id="quickAddCard" class="card">
-          <h2 class="section-title">当前网页快捷添加</h2>
+          <h2 class="section-title" data-i18n="quickAddTitle">当前网页快捷添加</h2>
           <div id="currentTabRow" class="input-row">
             <input
               id="currentTabInput"
@@ -78,15 +81,17 @@
               type="text"
               placeholder="正在读取当前标签页..."
               aria-label="当前网页规则"
+              data-i18n-placeholder="currentTabPlaceholderLoading"
+              data-i18n-aria-label="currentTabAria"
             />
-            <button id="addCurrentTabBtn" class="btn-primary" type="button">添加当前网站</button>
+            <button id="addCurrentTabBtn" class="btn-primary" type="button" data-i18n="addCurrentTabBtn">添加当前网站</button>
           </div>
           <p id="currentTabHint" class="hint muted"></p>
         </section>
 
         <section class="card rules-card">
           <div class="section-header">
-            <h2 class="section-title">过滤规则</h2>
+            <h2 class="section-title" data-i18n="rulesSectionTitle">过滤规则</h2>
             <span id="ruleCountBadge" class="badge">0 条</span>
           </div>
           <form id="addRuleForm" class="input-row">
@@ -96,27 +101,29 @@
               type="text"
               placeholder="例如 *://*.example.com/private/*"
               aria-label="新增过滤规则"
+              data-i18n-placeholder="newRulePlaceholder"
+              data-i18n-aria-label="newRuleAria"
             />
-            <button class="btn-primary" type="submit">添加</button>
+            <button id="addRuleSubmitBtn" class="btn-primary" type="submit" data-i18n="addBtn">添加</button>
           </form>
           <p class="hint muted">
-            示例：<code>*://example.com/*</code>、<code>*://*.example.com/*</code>、<code>https://a.com/path/*</code>
+            <span data-i18n="ruleExamplesPrefix">示例：</span><code>*://example.com/*</code><span data-i18n="listSeparator">、</span><code>*://*.example.com/*</code><span data-i18n="listSeparator">、</span><code>https://a.com/path/*</code>
           </p>
 
           <ul id="rulesList" class="rules-list"></ul>
-          <p id="emptyRulesText" class="empty-text muted">暂无规则，添加并启用规则后将持续过滤新访问。</p>
+          <p id="emptyRulesText" class="empty-text muted" data-i18n="emptyRulesText">暂无规则，添加并启用规则后将持续过滤新访问。</p>
         </section>
       </section>
 
       <section id="statsTabPanel" class="tab-panel hidden" role="tabpanel" aria-labelledby="tabStatsBtn">
         <section class="card stats-card">
           <div class="section-header">
-            <h2 class="section-title">全局概览</h2>
+            <h2 class="section-title" data-i18n="statsOverviewTitle">全局概览</h2>
             <div id="resetStatsArea" class="reset-area">
-              <button id="resetStatsBtn" class="btn-link" type="button">重置统计</button>
+              <button id="resetStatsBtn" class="btn-link" type="button" data-i18n="resetStatsBtn">重置统计</button>
               <span id="resetConfirmGroup" class="confirm-group hidden">
-                <button id="confirmResetBtn" class="btn-danger-sm" type="button">确认重置</button>
-                <button id="cancelResetBtn" class="btn-link" type="button">取消</button>
+                <button id="confirmResetBtn" class="btn-danger-sm" type="button" data-i18n="confirmResetBtn">确认重置</button>
+                <button id="cancelResetBtn" class="btn-link" type="button" data-i18n="cancelBtn">取消</button>
               </span>
             </div>
           </div>
@@ -125,97 +132,116 @@
               <svg id="statsDonutSvg" class="donut-svg" viewBox="0 0 88 88" aria-hidden="true"></svg>
               <div class="donut-center">
                 <strong id="chartTotalValue" class="donut-total">0</strong>
-                <span class="donut-sub">今日 <span id="chartTodayValue">0</span></span>
+                <span class="donut-sub"><span data-i18n="donutTodayPrefix">今日</span> <span id="chartTodayValue">0</span></span>
               </div>
             </div>
             <ul id="statsChartLegend" class="chart-legend"></ul>
           </div>
           <div id="statsDetailView" class="stats-grid hidden">
             <div class="stat-item">
-              <span class="stat-label">今日清理</span>
+              <span class="stat-label" data-i18n="todayCleanedLabel">今日清理</span>
               <strong id="todayCleanedValue" class="stat-value">0</strong>
             </div>
             <div class="stat-item">
-              <span class="stat-label">累计清理</span>
+              <span class="stat-label" data-i18n="totalCleanedLabel">累计清理</span>
               <strong id="totalCleanedValue" class="stat-value">0</strong>
             </div>
             <div class="stat-item">
-              <span class="stat-label">启用规则</span>
+              <span class="stat-label" data-i18n="activeRulesLabel">启用规则</span>
               <strong id="activeRulesValue" class="stat-value-sm">0 / 0 条</strong>
             </div>
             <div class="stat-item">
-              <span class="stat-label">最高命中</span>
+              <span class="stat-label" data-i18n="topRuleLabel">最高命中</span>
               <strong id="topRuleValue" class="stat-value-sm">暂无</strong>
             </div>
           </div>
           <div class="stats-footer">
             <span id="lastCleanedText" class="muted">最近清理：暂无</span>
-            <div class="page-indicator" role="group" aria-label="概览视图切换">
-              <button id="statsPrevPageBtn" class="page-arrow" type="button" title="图表概览" aria-label="图表概览">‹</button>
-              <button class="page-dot active" type="button" data-stats-page="0" title="图表概览" aria-label="图表概览" aria-current="true"></button>
-              <button class="page-dot" type="button" data-stats-page="1" title="详细信息" aria-label="详细信息" aria-current="false"></button>
-              <button id="statsNextPageBtn" class="page-arrow" type="button" title="详细信息" aria-label="详细信息">›</button>
+            <div class="page-indicator" role="group" aria-label="概览视图切换" data-i18n-aria-label="statsViewSwitchAria">
+              <button id="statsPrevPageBtn" class="page-arrow" type="button" title="图表概览" aria-label="图表概览" data-i18n-title="statsViewChart" data-i18n-aria-label="statsViewChart">‹</button>
+              <button class="page-dot active" type="button" data-stats-page="0" title="图表概览" aria-label="图表概览" aria-current="true" data-i18n-title="statsViewChart" data-i18n-aria-label="statsViewChart"></button>
+              <button class="page-dot" type="button" data-stats-page="1" title="详细信息" aria-label="详细信息" aria-current="false" data-i18n-title="statsViewDetail" data-i18n-aria-label="statsViewDetail"></button>
+              <button id="statsNextPageBtn" class="page-arrow" type="button" title="详细信息" aria-label="详细信息" data-i18n-title="statsViewDetail" data-i18n-aria-label="statsViewDetail">›</button>
             </div>
           </div>
         </section>
 
         <section class="card stats-list-card">
           <div class="section-header">
-            <h2 class="section-title">各规则清理明细</h2>
+            <h2 class="section-title" data-i18n="ruleStatsTitle">各规则清理明细</h2>
             <span id="statsRuleCountBadge" class="badge">0 条</span>
           </div>
           <ul id="ruleStatsList" class="rule-stats-list"></ul>
-          <p id="emptyRuleStatsText" class="empty-text muted">暂无规则统计数据，请先在“规则管理”页添加规则。</p>
+          <p id="emptyRuleStatsText" class="empty-text muted" data-i18n="emptyRuleStatsText">暂无规则统计数据，请先在“规则管理”页添加规则。</p>
         </section>
       </section>
 
       <section id="settingsTabPanel" class="tab-panel hidden" role="tabpanel" aria-labelledby="tabSettingsBtn">
         <section class="card">
-          <h2 class="section-title">清理行为</h2>
-          <label class="option-row">
-            <input id="cleanHistoryOnAddToggle" type="checkbox" />
-            <span>添加规则后立即删除匹配的历史记录</span>
-          </label>
-          <p class="hint muted">开启后，每次新增规则都会扫描现有历史记录并清除匹配网址；关闭则仅过滤后续新访问。</p>
+          <h2 class="section-title" data-i18n="settingsLanguageTitle">语言</h2>
+          <div class="setting-field">
+            <label class="setting-label" for="languageSelect" data-i18n="languageLabel">界面语言</label>
+            <select id="languageSelect" class="select">
+              <option value="auto" data-i18n="languageAutoOption">跟随系统（自动）</option>
+              <option value="zh-CN">简体中文</option>
+              <option value="zh-TW">繁體中文</option>
+              <option value="en">English</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+              <option value="es">Español</option>
+              <option value="fr">Français</option>
+              <option value="de">Deutsch</option>
+            </select>
+            <p class="hint muted" data-i18n="languageHint">选择“跟随系统”时会自动匹配浏览器语言；切换后立即生效。</p>
+          </div>
         </section>
 
         <section class="card">
-          <h2 class="section-title">当前网页快捷添加</h2>
+          <h2 class="section-title" data-i18n="settingsCleanupTitle">清理行为</h2>
+          <label class="option-row">
+            <input id="cleanHistoryOnAddToggle" type="checkbox" />
+            <span data-i18n="cleanHistoryOnAddLabel">添加规则后立即删除匹配的历史记录</span>
+          </label>
+          <p class="hint muted" data-i18n="cleanHistoryOnAddHint">开启后，每次新增规则都会扫描现有历史记录并清除匹配网址；关闭则仅过滤后续新访问。</p>
+        </section>
+
+        <section class="card">
+          <h2 class="section-title" data-i18n="settingsQuickAddTitle">当前网页快捷添加</h2>
           <label class="option-row">
             <input id="showQuickAddToggle" type="checkbox" />
-            <span>在规则管理页显示“当前网页快捷添加”</span>
+            <span data-i18n="showQuickAddLabel">在规则管理页显示“当前网页快捷添加”</span>
           </label>
           <div class="setting-field">
-            <label class="setting-label" for="quickAddModeSelect">默认生成规则格式</label>
+            <label class="setting-label" for="quickAddModeSelect" data-i18n="quickAddModeLabel">默认生成规则格式</label>
             <select id="quickAddModeSelect" class="select">
-              <option value="host">*://当前主机/*（匹配 HTTP/HTTPS）</option>
-              <option value="subdomain">*://*.当前主机/*（含子域名）</option>
-              <option value="scheme">当前协议://当前主机/*（仅当前协议）</option>
+              <option value="host" data-i18n="quickAddModeHost">*://当前主机/*（匹配 HTTP/HTTPS）</option>
+              <option value="subdomain" data-i18n="quickAddModeSubdomain">*://*.当前主机/*（含子域名）</option>
+              <option value="scheme" data-i18n="quickAddModeScheme">当前协议://当前主机/*（仅当前协议）</option>
             </select>
-            <p class="hint muted">主域名（如 example.com）及 www. 会自动规范化为 *.example.com。</p>
+            <p class="hint muted" data-i18n="quickAddModeHint">主域名（如 example.com）及 www. 会自动规范化为 *.example.com。</p>
           </div>
         </section>
 
         <section class="card">
           <div class="section-header">
-            <h2 class="section-title">过滤规则批量管理</h2>
+            <h2 class="section-title" data-i18n="settingsBulkTitle">过滤规则批量管理</h2>
             <span id="settingsRuleCountBadge" class="badge">0 条</span>
           </div>
           <div class="bulk-actions">
-            <button id="enableAllRulesBtn" class="btn-secondary" type="button">全部启用</button>
-            <button id="pauseAllRulesBtn" class="btn-secondary" type="button">全部暂停</button>
-            <button id="clearAllRulesBtn" class="btn-danger-outline" type="button">清空规则</button>
+            <button id="enableAllRulesBtn" class="btn-secondary" type="button" data-i18n="enableAllRulesBtn">全部启用</button>
+            <button id="pauseAllRulesBtn" class="btn-secondary" type="button" data-i18n="pauseAllRulesBtn">全部暂停</button>
+            <button id="clearAllRulesBtn" class="btn-danger-outline" type="button" data-i18n="clearAllRulesBtn">清空规则</button>
           </div>
           <div class="transfer-actions">
-            <button id="importRulesBtn" class="btn-secondary" type="button">导入规则 (JSON)</button>
-            <button id="exportRulesBtn" class="btn-secondary" type="button">导出规则 (JSON)</button>
+            <button id="importRulesBtn" class="btn-secondary" type="button" data-i18n="importRulesBtn">导入规则 (JSON)</button>
+            <button id="exportRulesBtn" class="btn-secondary" type="button" data-i18n="exportRulesBtn">导出规则 (JSON)</button>
             <input id="importRulesFileInput" class="hidden" type="file" accept=".json,application/json" />
           </div>
           <div id="clearRulesConfirmGroup" class="confirm-bar hidden">
-            <span class="hint">确定删除全部规则？（全局累计统计仍会保留）</span>
+            <span class="hint" data-i18n="clearRulesConfirmText">确定删除全部规则？（全局累计统计仍会保留）</span>
             <div class="confirm-group">
-              <button id="confirmClearRulesBtn" class="btn-danger-sm" type="button">确认清空</button>
-              <button id="cancelClearRulesBtn" class="btn-link" type="button">取消</button>
+              <button id="confirmClearRulesBtn" class="btn-danger-sm" type="button" data-i18n="confirmClearRulesBtn">确认清空</button>
+              <button id="cancelClearRulesBtn" class="btn-link" type="button" data-i18n="cancelBtn">取消</button>
             </div>
           </div>
         </section>

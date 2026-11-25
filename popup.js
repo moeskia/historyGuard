@@ -1,4 +1,11 @@
 import { buildRuleFromTabUrl } from './lib/rules.js';
+import {
+  resolveLocale,
+  t,
+  translateError,
+  translateLastError,
+  translateUnsupportedReason
+} from './lib/i18n.js';
 
 const globalEnabledToggle = document.getElementById('globalEnabledToggle');
 const globalStatusText = document.getElementById('globalStatusText');
@@ -49,6 +56,7 @@ const ruleCountBadge = document.getElementById('ruleCountBadge');
 const rulesList = document.getElementById('rulesList');
 const emptyRulesText = document.getElementById('emptyRulesText');
 
+const languageSelect = document.getElementById('languageSelect');
 const cleanHistoryOnAddToggle = document.getElementById('cleanHistoryOnAddToggle');
 const showQuickAddToggle = document.getElementById('showQuickAddToggle');
 const quickAddModeSelect = document.getElementById('quickAddModeSelect');
@@ -62,7 +70,11 @@ const cancelClearRulesBtn = document.getElementById('cancelClearRulesBtn');
 const importRulesBtn = document.getElementById('importRulesBtn');
 const exportRulesBtn = document.getElementById('exportRulesBtn');
 const importRulesFileInput = document.getElementById('importRulesFileInput');
+
 let currentState = null;
+let activeLocale = resolveLocale('auto');
+let dateTimeFormatter = null;
+let dateTimeFormatterLocale = null;
 let editingRuleId = null;
 let activeTabUrl = '';
 let statsOverviewPage = 0;
@@ -75,6 +87,53 @@ const TAB_MAP = {
 };
 let activeTabName = 'rules';
 const dirtyPanels = new Set();
+
+function getDateTimeFormatter(locale) {
+  if (dateTimeFormatter && dateTimeFormatterLocale === locale) {
+    return dateTimeFormatter;
+  }
+  dateTimeFormatterLocale = locale;
+  dateTimeFormatter = new Intl.DateTimeFormat(locale, {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+  return dateTimeFormatter;
+}
+
+function applyTranslations(locale) {
+  if (document.documentElement) {
+    document.documentElement.lang = locale;
+  }
+  document.title = t(locale, 'appTitle');
+
+  for (const el of document.querySelectorAll('[data-i18n]')) {
+    const key = el.dataset?.i18n || el.getAttribute?.('data-i18n');
+    if (key) {
+      el.textContent = t(locale, key);
+    }
+  }
+  for (const el of document.querySelectorAll('[data-i18n-placeholder]')) {
+    const key = el.dataset?.i18nPlaceholder || el.getAttribute?.('data-i18n-placeholder');
+    if (key) {
+      el.placeholder = t(locale, key);
+    }
+  }
+  for (const el of document.querySelectorAll('[data-i18n-aria-label]')) {
+    const key = el.dataset?.i18nAriaLabel || el.getAttribute?.('data-i18n-aria-label');
+    if (key) {
+      el.setAttribute('aria-label', t(locale, key));
+    }
+  }
+  for (const el of document.querySelectorAll('[data-i18n-title]')) {
+    const key = el.dataset?.i18nTitle || el.getAttribute?.('data-i18n-title');
+    if (key) {
+      el.setAttribute('title', t(locale, key));
+    }
+  }
+}
 
 function showError(message) {
   hideInfo();
@@ -118,37 +177,40 @@ function switchTab(tabName) {
   renderActivePanel();
 }
 
+function getResponseError(response) {
+  const base = translateError(activeLocale, response);
+  if (
+    response?.errorCode === 'errUnknownAction' ||
+    (typeof response?.error === 'string' && response.error.startsWith('未知操作：'))
+  ) {
+    return t(activeLocale, 'errUnknownActionHint', { error: base });
+  }
+  return base;
+}
+
 async function sendMessage(payload) {
   const response = await chrome.runtime.sendMessage(payload);
   if (!response) {
-    throw new Error('后台服务无响应');
+    throw new Error(t(activeLocale, 'errNoBackgroundResponse'));
   }
-  if (!response.ok && typeof response.error === 'string' && response.error.startsWith('未知操作：')) {
+  if (!response.ok) {
     return {
       ...response,
-      error: `${response.error}（请先在 chrome://extensions/ 点击“刷新”按钮重新加载扩展后台服务）`
+      error: getResponseError(response)
     };
   }
   return response;
 }
 
-const DATE_TIME_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit'
-});
-
 function formatDateTime(isoString) {
   if (!isoString) {
-    return '暂无';
+    return t(activeLocale, 'noneValue');
   }
   const date = new Date(isoString);
   if (Number.isNaN(date.getTime())) {
-    return '暂无';
+    return t(activeLocale, 'noneValue');
   }
-  return DATE_TIME_FORMATTER.format(date);
+  return getDateTimeFormatter(activeLocale).format(date);
 }
 
 function renderCurrentTabQuickAdd(state) {
@@ -162,20 +224,21 @@ function renderCurrentTabQuickAdd(state) {
   const result = buildRuleFromTabUrl(activeTabUrl, mode);
   if (!result.supported) {
     currentTabInput.value = '';
-    currentTabInput.placeholder = '当前页面不支持快捷添加';
+    currentTabInput.placeholder = t(activeLocale, 'currentTabPlaceholderUnsupported');
     currentTabInput.disabled = true;
     addCurrentTabBtn.disabled = true;
-    currentTabHint.textContent = result.reason;
+    currentTabHint.textContent = translateUnsupportedReason(activeLocale, result);
     return;
   }
 
   currentTabInput.disabled = false;
   addCurrentTabBtn.disabled = false;
   currentTabInput.value = result.pattern;
-  currentTabHint.textContent = `已识别当前主机 ${result.host}，可直接添加或按需修改路径后添加。`;
+  currentTabHint.textContent = t(activeLocale, 'currentTabSupportedHint', { host: result.host });
 }
 
 function renderSettings(state) {
+  languageSelect.value = state.language || 'auto';
   cleanHistoryOnAddToggle.checked = state.cleanHistoryOnAdd !== false;
   showQuickAddToggle.checked = state.showQuickAdd !== false;
   quickAddModeSelect.value = state.quickAddMode || 'host';
@@ -189,6 +252,7 @@ function renderSettings(state) {
     clearRulesConfirmGroup.classList.add('hidden');
   }
 }
+
 const CHART_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#9ca3af'];
 
 function setStatsOverviewPage(page) {
@@ -227,7 +291,7 @@ function renderOverviewChart(state, sortedRules) {
   if (total <= 0) {
     const emptyLi = document.createElement('li');
     emptyLi.className = 'chart-empty';
-    emptyLi.textContent = '暂无清理记录，命中规则后将在此展示各规则占比。';
+    emptyLi.textContent = t(activeLocale, 'chartEmpty');
     legendFragment.appendChild(emptyLi);
     statsDonutSvg.replaceChildren(svgFragment);
     statsChartLegend.replaceChildren(legendFragment);
@@ -248,7 +312,10 @@ function renderOverviewChart(state, sortedRules) {
   const remaining = total - topSum;
   if (remaining > 0) {
     segments.push({
-      label: activeHits.length > 4 ? '其他规则 / 历史' : '已删除规则累计',
+      label:
+        activeHits.length > 4
+          ? t(activeLocale, 'chartOtherRules')
+          : t(activeLocale, 'chartDeletedRules'),
       count: remaining,
       color: CHART_COLORS[4]
     });
@@ -305,8 +372,14 @@ function renderStats(state) {
   chartTotalValue.textContent = String(state.stats.totalCleaned);
   chartTodayValue.textContent = String(state.stats.todayCleaned);
   const enabledRulesCount = state.rules.filter((rule) => rule.enabled).length;
-  activeRulesValue.textContent = `${enabledRulesCount} / ${state.rules.length} 条`;
-  lastCleanedText.textContent = `最近清理：${formatDateTime(state.stats.lastCleanedAt)}`;
+  activeRulesValue.textContent = t(activeLocale, 'activeRulesValue', {
+    enabled: enabledRulesCount,
+    total: state.rules.length,
+    count: state.rules.length
+  });
+  lastCleanedText.textContent = t(activeLocale, 'lastCleanedText', {
+    time: formatDateTime(state.stats.lastCleanedAt)
+  });
 
   const fragment = document.createDocumentFragment();
   emptyRuleStatsText.classList.toggle('hidden', state.rules.length > 0);
@@ -333,11 +406,16 @@ function renderStats(state) {
     metaRow.className = 'rule-meta';
 
     const countSpan = document.createElement('span');
-    countSpan.textContent = `今日 ${todayCleaned} / 累计 ${cleanedCount} 次`;
+    countSpan.textContent = t(activeLocale, 'ruleStatsCount', {
+      today: todayCleaned,
+      total: cleanedCount
+    });
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'rule-stat-time';
-    timeSpan.textContent = `最近清理：${formatDateTime(lastCleanedAt)}`;
+    timeSpan.textContent = t(activeLocale, 'lastCleanedText', {
+      time: formatDateTime(lastCleanedAt)
+    });
 
     metaRow.append(countSpan, timeSpan);
 
@@ -345,20 +423,24 @@ function renderStats(state) {
     fragment.appendChild(li);
   }
 
-
   const sortedRules = [...state.rules].sort(
     (a, b) => b.cleanedCount - a.cleanedCount || b.todayCleaned - a.todayCleaned
   );
   const topRule = sortedRules.find((rule) => rule.cleanedCount > 0);
-  topRuleValue.textContent = topRule ? `${topRule.pattern} (${topRule.cleanedCount})` : '暂无';
-  topRuleValue.title = topRule ? `${topRule.pattern} (${topRule.cleanedCount} 次)` : '暂无';
+  const noneText = t(activeLocale, 'noneValue');
+  topRuleValue.textContent = topRule ? `${topRule.pattern} (${topRule.cleanedCount})` : noneText;
+  topRuleValue.title = topRule
+    ? t(activeLocale, 'topRuleTitle', { pattern: topRule.pattern, count: topRule.cleanedCount })
+    : noneText;
   renderOverviewChart(state, sortedRules);
 
   for (const rule of sortedRules) {
     appendStatCard({
       label: rule.pattern,
       active: rule.enabled,
-      statusText: rule.enabled ? '运行中' : '已暂停',
+      statusText: rule.enabled
+        ? t(activeLocale, 'ruleStatusActive')
+        : t(activeLocale, 'ruleStatusPaused'),
       todayCleaned: rule.todayCleaned,
       cleanedCount: rule.cleanedCount,
       lastCleanedAt: rule.lastCleanedAt
@@ -384,7 +466,7 @@ function renderRules(state) {
     const toggle = document.createElement('input');
     toggle.type = 'checkbox';
     toggle.checked = rule.enabled;
-    toggle.setAttribute('aria-label', `启用或暂停规则 ${rule.pattern}`);
+    toggle.setAttribute('aria-label', t(activeLocale, 'toggleRuleAria', { pattern: rule.pattern }));
     toggle.addEventListener('change', async () => {
       const res = await sendMessage({
         type: 'toggleRule',
@@ -404,7 +486,7 @@ function renderRules(state) {
       editInput.type = 'text';
       editInput.className = 'rule-edit-input';
       editInput.value = rule.pattern;
-      editInput.setAttribute('aria-label', '编辑规则');
+      editInput.setAttribute('aria-label', t(activeLocale, 'editRuleAria'));
 
       const commitEdit = async () => {
         const res = await sendMessage({
@@ -444,7 +526,7 @@ function renderRules(state) {
       const saveBtn = document.createElement('button');
       saveBtn.type = 'button';
       saveBtn.className = 'btn-link';
-      saveBtn.textContent = '保存';
+      saveBtn.textContent = t(activeLocale, 'saveBtn');
       saveBtn.addEventListener('click', () => {
         void commitEdit();
       });
@@ -452,7 +534,7 @@ function renderRules(state) {
       const cancelBtn = document.createElement('button');
       cancelBtn.type = 'button';
       cancelBtn.className = 'btn-link-muted';
-      cancelBtn.textContent = '取消';
+      cancelBtn.textContent = t(activeLocale, 'cancelBtn');
       cancelBtn.addEventListener('click', cancelEdit);
 
       actions.append(saveBtn, cancelBtn);
@@ -476,7 +558,7 @@ function renderRules(state) {
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
     editBtn.className = 'btn-link';
-    editBtn.textContent = '编辑';
+    editBtn.textContent = t(activeLocale, 'editBtn');
     editBtn.addEventListener('click', () => {
       editingRuleId = rule.id;
       renderRules(currentState);
@@ -485,7 +567,7 @@ function renderRules(state) {
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'btn-link-danger';
-    deleteBtn.textContent = '删除';
+    deleteBtn.textContent = t(activeLocale, 'deleteBtn');
     deleteBtn.addEventListener('click', async () => {
       const res = await sendMessage({ type: 'deleteRule', id: rule.id });
       if (!res.ok) {
@@ -521,14 +603,19 @@ function renderActivePanel() {
 
 function renderState(state) {
   currentState = state;
+  const nextLocale = resolveLocale(state.language);
+  if (nextLocale !== activeLocale) {
+    activeLocale = nextLocale;
+    applyTranslations(activeLocale);
+  }
   for (const name of Object.keys(TAB_MAP)) {
     dirtyPanels.add(name);
   }
   globalEnabledToggle.checked = state.enabled;
   globalStatusText.textContent = state.enabled
-    ? '已开启：自动过滤匹配的历史记录'
-    : '已暂停：当前不会自动清理任何历史记录';
-  const countText = `${state.rules.length} 条`;
+    ? t(activeLocale, 'statusEnabled')
+    : t(activeLocale, 'statusDisabled');
+  const countText = t(activeLocale, 'ruleCountBadge', { count: state.rules.length });
   ruleCountBadge.textContent = countText;
   statsRuleCountBadge.textContent = countText;
   settingsRuleCountBadge.textContent = countText;
@@ -572,12 +659,13 @@ async function handleAddRule(pattern) {
   }
   hideError();
   if (res.cleanedExistingCount > 0) {
-    showInfo(`已添加规则，并立即清理了 ${res.cleanedExistingCount} 条匹配的历史记录。`);
+    showInfo(t(activeLocale, 'infoRuleAddedCleaned', { count: res.cleanedExistingCount }));
   } else {
     hideInfo();
   }
-  if (res.lastError) {
-    showError(res.lastError);
+  const lastErrMsg = translateLastError(activeLocale, res);
+  if (lastErrMsg) {
+    showError(lastErrMsg);
   }
   renderState(res.state);
   return true;
@@ -604,6 +692,10 @@ globalEnabledToggle.addEventListener('change', async () => {
   }
 });
 
+languageSelect.addEventListener('change', () => {
+  void saveSettings({ language: languageSelect.value });
+});
+
 cleanHistoryOnAddToggle.addEventListener('change', () => {
   void saveSettings({ cleanHistoryOnAdd: cleanHistoryOnAddToggle.checked });
 });
@@ -624,7 +716,7 @@ enableAllRulesBtn.addEventListener('click', async () => {
       return;
     }
     hideError();
-    showInfo('已启用全部过滤规则。');
+    showInfo(t(activeLocale, 'infoAllRulesEnabled'));
     renderState(res.state);
   } catch (err) {
     showError(err.message);
@@ -639,7 +731,7 @@ pauseAllRulesBtn.addEventListener('click', async () => {
       return;
     }
     hideError();
-    showInfo('已暂停全部过滤规则。');
+    showInfo(t(activeLocale, 'infoAllRulesPaused'));
     renderState(res.state);
   } catch (err) {
     showError(err.message);
@@ -653,6 +745,7 @@ clearAllRulesBtn.addEventListener('click', () => {
 cancelClearRulesBtn.addEventListener('click', () => {
   clearRulesConfirmGroup.classList.add('hidden');
 });
+
 confirmClearRulesBtn.addEventListener('click', async () => {
   try {
     const res = await sendMessage({ type: 'clearAllRules' });
@@ -662,7 +755,7 @@ confirmClearRulesBtn.addEventListener('click', async () => {
       return;
     }
     hideError();
-    showInfo('已清空全部过滤规则。');
+    showInfo(t(activeLocale, 'infoAllRulesCleared'));
     renderState(res.state);
   } catch (err) {
     showError(err.message);
@@ -691,7 +784,7 @@ exportRulesBtn.addEventListener('click', () => {
   link.remove();
   URL.revokeObjectURL(url);
   hideError();
-  showInfo(`已导出 ${currentState.rules.length} 条规则。`);
+  showInfo(t(activeLocale, 'infoExportedRules', { count: currentState.rules.length }));
 });
 
 importRulesBtn.addEventListener('click', () => {
@@ -716,23 +809,25 @@ importRulesFileInput.addEventListener('change', async () => {
     }
     hideError();
 
-    const parts = [`已导入 ${res.addedCount} 条规则`];
+    const parts = [t(activeLocale, 'infoImportedAdded', { count: res.addedCount })];
     if (res.skippedDuplicate > 0) {
-      parts.push(`跳过重复 ${res.skippedDuplicate} 条`);
+      parts.push(t(activeLocale, 'infoImportedSkippedDup', { count: res.skippedDuplicate }));
     }
     if (res.skippedInvalid > 0) {
-      parts.push(`忽略无效 ${res.skippedInvalid} 条`);
+      parts.push(t(activeLocale, 'infoImportedSkippedInvalid', { count: res.skippedInvalid }));
     }
     if (res.cleanedExistingCount > 0) {
-      parts.push(`立即清理匹配历史 ${res.cleanedExistingCount} 条`);
+      parts.push(t(activeLocale, 'infoImportedCleaned', { count: res.cleanedExistingCount }));
     }
-    showInfo(`${parts.join('，')}。`);
-    if (res.lastError) {
-      showError(res.lastError);
+    const separator = t(activeLocale, 'sentenceListSeparator');
+    showInfo(t(activeLocale, 'infoImportedSentence', { parts: parts.join(separator) }));
+    const lastErrMsg = translateLastError(activeLocale, res);
+    if (lastErrMsg) {
+      showError(lastErrMsg);
     }
     renderState(res.state);
   } catch (err) {
-    showError(err instanceof SyntaxError ? '导入失败：JSON 文件格式无效' : err.message);
+    showError(err instanceof SyntaxError ? t(activeLocale, 'errImportInvalidJson') : err.message);
   }
 });
 
@@ -755,6 +850,7 @@ addRuleForm.addEventListener('submit', async (event) => {
     showError(err.message);
   }
 });
+
 statsPrevPageBtn.addEventListener('click', () => setStatsOverviewPage(0));
 statsNextPageBtn.addEventListener('click', () => setStatsOverviewPage(1));
 for (const dot of statsPageDots) {
@@ -803,20 +899,22 @@ dismissInfoBtn.addEventListener('click', () => {
 });
 
 async function init() {
+  applyTranslations(activeLocale);
   switchTab('rules');
   setStatsOverviewPage(0);
   try {
     const [stateRes] = await Promise.all([sendMessage({ type: 'getState' }), fetchActiveTabUrl()]);
     if (!stateRes.ok) {
-      showError(stateRes.error || '加载状态失败');
+      showError(stateRes.error || t(activeLocale, 'errLoadStateFailed'));
       return;
     }
     renderState(stateRes.state);
-    if (stateRes.lastError) {
-      showError(stateRes.lastError);
+    const lastErrMsg = translateLastError(activeLocale, stateRes);
+    if (lastErrMsg) {
+      showError(lastErrMsg);
     }
   } catch (err) {
-    showError(err.message || '初始化失败');
+    showError(err.message || t(activeLocale, 'errInitFailed'));
   } finally {
     requestAnimationFrame(() => {
       document.body.classList.add('ready');
