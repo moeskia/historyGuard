@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HistoryGuard</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="header">
+        <div class="brand">
+          <img class="brand-icon" src="icons/icon48.png" alt="" width="28" height="28" />
+          <div>
+            <h1 class="title">HistoryGuard</h1>
+            <p id="globalStatusText" class="subtitle">正在加载状态...</p>
+          </div>
+        </div>
+        <label class="switch" aria-label="自动清理总开关">
+          <input id="globalEnabledToggle" type="checkbox" />
+          <span class="slider"></span>
+        </label>
+      </header>
+
+      <div id="errorBanner" class="banner banner-error hidden" role="alert">
+        <span id="errorText"></span>
+        <button id="dismissErrorBtn" class="btn-link" type="button">关闭</button>
+      </div>
+
+      <div id="infoBanner" class="banner banner-info hidden" role="status">
+        <span id="infoText"></span>
+        <button id="dismissInfoBtn" class="btn-link" type="button">关闭</button>
+      </div>
+
+      <nav class="tabs" role="tablist" aria-label="功能页面切换">
+        <button
+          id="tabRulesBtn"
+          class="tab-btn active"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="rulesTabPanel"
+          data-tab="rules"
+        >
+          规则管理
+        </button>
+        <button
+          id="tabStatsBtn"
+          class="tab-btn"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="statsTabPanel"
+          data-tab="stats"
+        >
+          清理统计
+        </button>
+        <button
+          id="tabSettingsBtn"
+          class="tab-btn"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="settingsTabPanel"
+          data-tab="settings"
+        >
+          设置
+        </button>
+      </nav>
+
+      <section id="rulesTabPanel" class="tab-panel" role="tabpanel" aria-labelledby="tabRulesBtn">
+        <section id="quickAddCard" class="card">
+          <h2 class="section-title">当前网页快捷添加</h2>
+          <div id="currentTabRow" class="input-row">
+            <input
+              id="currentTabInput"
+              class="input"
+              type="text"
+              placeholder="正在读取当前标签页..."
+              aria-label="当前网页规则"
+            />
+            <button id="addCurrentTabBtn" class="btn-primary" type="button">添加当前网站</button>
+          </div>
+          <p id="currentTabHint" class="hint muted"></p>
+        </section>
+
+        <section class="card rules-card">
+          <div class="section-header">
+            <h2 class="section-title">过滤规则</h2>
+            <span id="ruleCountBadge" class="badge">0 条</span>
+          </div>
+          <form id="addRuleForm" class="input-row">
+            <input
+              id="newRuleInput"
+              class="input"
+              type="text"
+              placeholder="例如 *://*.example.com/private/*"
+              aria-label="新增过滤规则"
+            />
+            <button class="btn-primary" type="submit">添加</button>
+          </form>
+          <p class="hint muted">
+            示例：<code>*://example.com/*</code>、<code>*://*.example.com/*</code>、<code>https://a.com/path/*</code>
+          </p>
+
+          <ul id="rulesList" class="rules-list"></ul>
+          <p id="emptyRulesText" class="empty-text muted">暂无规则，添加并启用规则后将持续过滤新访问。</p>
+        </section>
+      </section>
+
+      <section id="statsTabPanel" class="tab-panel hidden" role="tabpanel" aria-labelledby="tabStatsBtn">
+        <section class="card stats-card">
+          <div class="section-header">
+            <h2 class="section-title">全局概览</h2>
+            <div id="resetStatsArea" class="reset-area">
+              <button id="resetStatsBtn" class="btn-link" type="button">重置统计</button>
+              <span id="resetConfirmGroup" class="confirm-group hidden">
+                <button id="confirmResetBtn" class="btn-danger-sm" type="button">确认重置</button>
+                <button id="cancelResetBtn" class="btn-link" type="button">取消</button>
+              </span>
+            </div>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <span class="stat-label">今日清理</span>
+              <strong id="todayCleanedValue" class="stat-value">0</strong>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">累计清理</span>
+              <strong id="totalCleanedValue" class="stat-value">0</strong>
+            </div>
+          </div>
+          <div class="stats-footer">
+            <span id="lastCleanedText" class="muted">最近清理：暂无</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-header">
+            <h2 class="section-title">各规则清理明细</h2>
+            <span id="statsRuleCountBadge" class="badge">0 条</span>
+          </div>
+          <ul id="ruleStatsList" class="rule-stats-list"></ul>
+          <p id="emptyRuleStatsText" class="empty-text muted">暂无规则统计数据，请先在“规则管理”页添加规则。</p>
+        </section>
+      </section>
+
+      <section id="settingsTabPanel" class="tab-panel hidden" role="tabpanel" aria-labelledby="tabSettingsBtn">
+        <section class="card">
+          <h2 class="section-title">清理行为</h2>
+          <label class="option-row">
+            <input id="cleanHistoryOnAddToggle" type="checkbox" />
+            <span>添加规则后立即删除匹配的历史记录</span>
+          </label>
+          <p class="hint muted">开启后，每次新增规则都会扫描现有历史记录并清除匹配网址；关闭则仅过滤后续新访问。</p>
+        </section>
+
+        <section class="card">
+          <h2 class="section-title">当前网页快捷添加</h2>
+          <label class="option-row">
+            <input id="showQuickAddToggle" type="checkbox" />
+            <span>在规则管理页显示“当前网页快捷添加”</span>
+          </label>
+          <div class="setting-field">
+            <label class="setting-label" for="quickAddModeSelect">默认生成规则格式</label>
+            <select id="quickAddModeSelect" class="select">
+              <option value="host">*://当前主机/*（匹配 HTTP/HTTPS）</option>
+              <option value="subdomain">*://*.当前主机/*（含子域名）</option>
+              <option value="scheme">当前协议://当前主机/*（仅当前协议）</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-header">
+            <h2 class="section-title">过滤规则批量管理</h2>
+            <span id="settingsRuleCountBadge" class="badge">0 条</span>
+          </div>
+          <div class="bulk-actions">
+            <button id="enableAllRulesBtn" class="btn-secondary" type="button">全部启用</button>
+            <button id="pauseAllRulesBtn" class="btn-secondary" type="button">全部暂停</button>
+            <button id="clearAllRulesBtn" class="btn-danger-outline" type="button">清空规则</button>
+          </div>
+          <div class="transfer-actions">
+            <button id="importRulesBtn" class="btn-secondary" type="button">导入规则 (JSON)</button>
+            <button id="exportRulesBtn" class="btn-secondary" type="button">导出规则 (JSON)</button>
+            <input id="importRulesFileInput" class="hidden" type="file" accept=".json,application/json" />
+          </div>
+          <div id="clearRulesConfirmGroup" class="confirm-bar hidden">
+            <span class="hint">确定删除全部规则？（全局累计统计仍会保留）</span>
+            <div class="confirm-group">
+              <button id="confirmClearRulesBtn" class="btn-danger-sm" type="button">确认清空</button>
+              <button id="cancelClearRulesBtn" class="btn-link" type="button">取消</button>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
