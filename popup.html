@@ -120,7 +120,17 @@
               </span>
             </div>
           </div>
-          <div class="stats-grid">
+          <div id="statsChartView" class="stats-chart-wrap">
+            <div class="donut-wrap">
+              <svg id="statsDonutSvg" class="donut-svg" viewBox="0 0 88 88" aria-hidden="true"></svg>
+              <div class="donut-center">
+                <strong id="chartTotalValue" class="donut-total">0</strong>
+                <span class="donut-sub">今日 <span id="chartTodayValue">0</span></span>
+              </div>
+            </div>
+            <ul id="statsChartLegend" class="chart-legend"></ul>
+          </div>
+          <div id="statsDetailView" class="stats-grid hidden">
             <div class="stat-item">
               <span class="stat-label">今日清理</span>
               <strong id="todayCleanedValue" class="stat-value">0</strong>
@@ -129,9 +139,23 @@
               <span class="stat-label">累计清理</span>
               <strong id="totalCleanedValue" class="stat-value">0</strong>
             </div>
+            <div class="stat-item">
+              <span class="stat-label">启用规则</span>
+              <strong id="activeRulesValue" class="stat-value-sm">0 / 0 条</strong>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">最高命中</span>
+              <strong id="topRuleValue" class="stat-value-sm">暂无</strong>
+            </div>
           </div>
           <div class="stats-footer">
             <span id="lastCleanedText" class="muted">最近清理：暂无</span>
+            <div class="page-indicator" role="group" aria-label="概览视图切换">
+              <button id="statsPrevPageBtn" class="page-arrow" type="button" title="图表概览" aria-label="图表概览">‹</button>
+              <button class="page-dot active" type="button" data-stats-page="0" title="图表概览" aria-label="图表概览" aria-current="true"></button>
+              <button class="page-dot" type="button" data-stats-page="1" title="详细信息" aria-label="详细信息" aria-current="false"></button>
+              <button id="statsNextPageBtn" class="page-arrow" type="button" title="详细信息" aria-label="详细信息">›</button>
+            </div>
           </div>
         </section>
 

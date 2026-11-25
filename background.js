@@ -74,13 +74,61 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
     return ICON_PATHS.default;
   }
 
+  function callChromeApi(target, method, ...args) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let ret;
+      try {
+        ret = target[method](...args, (result) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          const err = chromeApi.runtime?.lastError;
+          if (err) {
+            reject(new Error(err.message || String(err)));
+            return;
+          }
+          resolve(result);
+        });
+      } catch (err) {
+        if (!settled) {
+          settled = true;
+          reject(err);
+        }
+        return;
+      }
+
+      if (ret && typeof ret.then === 'function') {
+        ret.then(
+          (result) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            void chromeApi.runtime?.lastError;
+            resolve(result);
+          },
+          (err) => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            void chromeApi.runtime?.lastError;
+            reject(err);
+          }
+        );
+      }
+    });
+  }
+
   async function setTabIcon(state, tab) {
-    if (typeof chromeApi.action?.setIcon !== 'function' || typeof tab?.id !== 'number') {
+    if (typeof chromeApi.action?.setIcon !== 'function' || typeof tab?.id !== 'number' || tab.id < 0) {
       return;
     }
     const path = resolveIconPathForUrl(state, tab.url);
     try {
-      await chromeApi.action.setIcon({ tabId: tab.id, path });
+      await callChromeApi(chromeApi.action, 'setIcon', { tabId: tab.id, path });
     } catch {
       // 标签页已关闭等瞬态异常忽略
     }
@@ -92,7 +140,7 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
     }
     const defaultPath = state.enabled ? ICON_PATHS.default : ICON_PATHS.disabled;
     try {
-      await chromeApi.action.setIcon({ path: defaultPath });
+      await callChromeApi(chromeApi.action, 'setIcon', { path: defaultPath });
     } catch {
       // 忽略异常
     }
@@ -100,7 +148,7 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
       return;
     }
     try {
-      const tabs = await chromeApi.tabs.query({});
+      const tabs = await callChromeApi(chromeApi.tabs, 'query', {});
       await Promise.all((tabs || []).map((tab) => setTabIcon(state, tab)));
     } catch {
       // 忽略异常
@@ -108,7 +156,7 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
   }
 
   async function refreshTabIcon(tab) {
-    if (!tab || typeof tab.id !== 'number') {
+    if (!tab || typeof tab.id !== 'number' || tab.id < 0) {
       return;
     }
     const state = await enqueue(() => loadState());
@@ -116,11 +164,11 @@ export function createBackgroundController({ chromeApi, now = () => new Date() }
   }
 
   async function refreshTabIconById(tabId) {
-    if (typeof tabId !== 'number' || typeof chromeApi.tabs?.get !== 'function') {
+    if (typeof tabId !== 'number' || tabId < 0 || typeof chromeApi.tabs?.get !== 'function') {
       return;
     }
     try {
-      const tab = await chromeApi.tabs.get(tabId);
+      const tab = await callChromeApi(chromeApi.tabs, 'get', tabId);
       await refreshTabIcon(tab);
     } catch {
       // 标签页不存在或已关闭

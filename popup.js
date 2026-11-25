@@ -16,9 +16,20 @@ const rulesTabPanel = document.getElementById('rulesTabPanel');
 const statsTabPanel = document.getElementById('statsTabPanel');
 const settingsTabPanel = document.getElementById('settingsTabPanel');
 
+const statsChartView = document.getElementById('statsChartView');
+const statsDetailView = document.getElementById('statsDetailView');
+const statsDonutSvg = document.getElementById('statsDonutSvg');
+const chartTotalValue = document.getElementById('chartTotalValue');
+const chartTodayValue = document.getElementById('chartTodayValue');
+const statsChartLegend = document.getElementById('statsChartLegend');
 const todayCleanedValue = document.getElementById('todayCleanedValue');
 const totalCleanedValue = document.getElementById('totalCleanedValue');
+const activeRulesValue = document.getElementById('activeRulesValue');
+const topRuleValue = document.getElementById('topRuleValue');
 const lastCleanedText = document.getElementById('lastCleanedText');
+const statsPrevPageBtn = document.getElementById('statsPrevPageBtn');
+const statsNextPageBtn = document.getElementById('statsNextPageBtn');
+const statsPageDots = Array.from(document.querySelectorAll('[data-stats-page]'));
 const resetStatsBtn = document.getElementById('resetStatsBtn');
 const resetConfirmGroup = document.getElementById('resetConfirmGroup');
 const confirmResetBtn = document.getElementById('confirmResetBtn');
@@ -54,7 +65,9 @@ const importRulesFileInput = document.getElementById('importRulesFileInput');
 let currentState = null;
 let editingRuleId = null;
 let activeTabUrl = '';
-
+let statsOverviewPage = 0;
+let errorTimer = null;
+let infoTimer = null;
 const TAB_MAP = {
   rules: { btn: tabRulesBtn, panel: rulesTabPanel },
   stats: { btn: tabStatsBtn, panel: statsTabPanel },
@@ -62,21 +75,31 @@ const TAB_MAP = {
 };
 
 function showError(message) {
+  hideInfo();
+  clearTimeout(errorTimer);
   errorText.textContent = message;
   errorBanner.classList.remove('hidden');
+  errorTimer = setTimeout(hideError, 4500);
 }
 
 function hideError() {
+  clearTimeout(errorTimer);
+  errorTimer = null;
   errorText.textContent = '';
   errorBanner.classList.add('hidden');
 }
 
 function showInfo(message) {
+  hideError();
+  clearTimeout(infoTimer);
   infoText.textContent = message;
   infoBanner.classList.remove('hidden');
+  infoTimer = setTimeout(hideInfo, 3000);
 }
 
 function hideInfo() {
+  clearTimeout(infoTimer);
+  infoTimer = null;
   infoText.textContent = '';
   infoBanner.classList.add('hidden');
 }
@@ -161,21 +184,128 @@ function renderSettings(state) {
     clearRulesConfirmGroup.classList.add('hidden');
   }
 }
+const CHART_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#9ca3af'];
+
+function setStatsOverviewPage(page) {
+  statsOverviewPage = page === 1 ? 1 : 0;
+  statsChartView.classList.toggle('hidden', statsOverviewPage !== 0);
+  statsDetailView.classList.toggle('hidden', statsOverviewPage !== 1);
+  statsPrevPageBtn.disabled = statsOverviewPage === 0;
+  statsNextPageBtn.disabled = statsOverviewPage === 1;
+  for (const dot of statsPageDots) {
+    const active = Number(dot.dataset.statsPage) === statsOverviewPage;
+    dot.classList.toggle('active', active);
+    dot.setAttribute('aria-current', String(active));
+  }
+}
+
+function renderOverviewChart(state, sortedRules) {
+  const svgNs = 'http://www.w3.org/2000/svg';
+  statsDonutSvg.replaceChildren();
+  statsChartLegend.replaceChildren();
+
+  const radius = 34;
+  const circumference = 2 * Math.PI * radius;
+  const track = document.createElementNS(svgNs, 'circle');
+  track.setAttribute('cx', '44');
+  track.setAttribute('cy', '44');
+  track.setAttribute('r', String(radius));
+  track.setAttribute('fill', 'none');
+  track.setAttribute('stroke', '#e5e7eb');
+  track.setAttribute('stroke-width', '10');
+  statsDonutSvg.appendChild(track);
+
+  const activeHits = sortedRules.filter((rule) => rule.cleanedCount > 0);
+  const rulesSum = activeHits.reduce((sum, rule) => sum + rule.cleanedCount, 0);
+  const total = Math.max(state.stats.totalCleaned, rulesSum);
+
+  if (total <= 0) {
+    const emptyLi = document.createElement('li');
+    emptyLi.className = 'chart-empty';
+    emptyLi.textContent = '暂无清理记录，命中规则后将在此展示各规则占比。';
+    statsChartLegend.appendChild(emptyLi);
+    return;
+  }
+
+  const segments = [];
+  const topRules = activeHits.slice(0, 4);
+  for (let i = 0; i < topRules.length; i += 1) {
+    segments.push({
+      label: topRules[i].pattern,
+      count: topRules[i].cleanedCount,
+      color: CHART_COLORS[i]
+    });
+  }
+
+  const topSum = topRules.reduce((sum, rule) => sum + rule.cleanedCount, 0);
+  const remaining = total - topSum;
+  if (remaining > 0) {
+    segments.push({
+      label: activeHits.length > 4 ? '其他规则 / 历史' : '已删除规则累计',
+      count: remaining,
+      color: CHART_COLORS[4]
+    });
+  }
+
+  let offset = 0;
+  for (const seg of segments) {
+    const ratio = seg.count / total;
+    const segLen = ratio * circumference;
+    const circle = document.createElementNS(svgNs, 'circle');
+    circle.setAttribute('cx', '44');
+    circle.setAttribute('cy', '44');
+    circle.setAttribute('r', String(radius));
+    circle.setAttribute('fill', 'none');
+    circle.setAttribute('stroke', seg.color);
+    circle.setAttribute('stroke-width', '10');
+    circle.setAttribute('stroke-dasharray', `${segLen} ${circumference}`);
+    circle.setAttribute('stroke-dashoffset', String(-offset));
+    statsDonutSvg.appendChild(circle);
+    offset += segLen;
+
+    const li = document.createElement('li');
+    li.className = 'chart-legend-item';
+
+    const left = document.createElement('span');
+    left.className = 'chart-legend-left';
+
+    const dot = document.createElement('span');
+    dot.className = 'chart-dot';
+    dot.style.backgroundColor = seg.color;
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'chart-legend-label';
+    labelSpan.textContent = seg.label;
+    labelSpan.title = seg.label;
+
+    left.append(dot, labelSpan);
+
+    const valSpan = document.createElement('span');
+    valSpan.className = 'chart-legend-val';
+    const pct = Math.round(ratio * 100);
+    valSpan.textContent = `${seg.count} (${pct}%)`;
+
+    li.append(left, valSpan);
+    statsChartLegend.appendChild(li);
+  }
+}
 
 function renderStats(state) {
-  globalEnabledToggle.checked = state.enabled;
   globalStatusText.textContent = state.enabled
     ? '已开启：自动过滤匹配的历史记录'
     : '已暂停：当前不会自动清理任何历史记录';
 
   todayCleanedValue.textContent = String(state.stats.todayCleaned);
   totalCleanedValue.textContent = String(state.stats.totalCleaned);
+  chartTotalValue.textContent = String(state.stats.totalCleaned);
+  chartTodayValue.textContent = String(state.stats.todayCleaned);
+  const enabledRulesCount = state.rules.filter((rule) => rule.enabled).length;
+  activeRulesValue.textContent = `${enabledRulesCount} / ${state.rules.length} 条`;
   lastCleanedText.textContent = `最近清理：${formatDateTime(state.stats.lastCleanedAt)}`;
 
   const countText = `${state.rules.length} 条`;
   ruleCountBadge.textContent = countText;
   statsRuleCountBadge.textContent = countText;
-
   ruleStatsList.replaceChildren();
   emptyRuleStatsText.classList.toggle('hidden', state.rules.length > 0);
 
@@ -217,6 +347,10 @@ function renderStats(state) {
   const sortedRules = [...state.rules].sort(
     (a, b) => b.cleanedCount - a.cleanedCount || b.todayCleaned - a.todayCleaned
   );
+  const topRule = sortedRules.find((rule) => rule.cleanedCount > 0);
+  topRuleValue.textContent = topRule ? `${topRule.pattern} (${topRule.cleanedCount})` : '暂无';
+  topRuleValue.title = topRule ? `${topRule.pattern} (${topRule.cleanedCount} 次)` : '暂无';
+  renderOverviewChart(state, sortedRules);
 
   for (const rule of sortedRules) {
     appendStatCard({
@@ -237,50 +371,6 @@ function renderRules(state) {
   for (const rule of state.rules) {
     const li = document.createElement('li');
     li.className = rule.enabled ? 'rule-item' : 'rule-item paused';
-
-    if (editingRuleId === rule.id) {
-      const editRow = document.createElement('div');
-      editRow.className = 'input-row';
-
-      const editInput = document.createElement('input');
-      editInput.type = 'text';
-      editInput.className = 'input';
-      editInput.value = rule.pattern;
-      editInput.setAttribute('aria-label', '编辑规则');
-
-      const saveBtn = document.createElement('button');
-      saveBtn.type = 'button';
-      saveBtn.className = 'btn-primary';
-      saveBtn.textContent = '保存';
-      saveBtn.addEventListener('click', async () => {
-        const res = await sendMessage({
-          type: 'updateRule',
-          id: rule.id,
-          pattern: editInput.value
-        });
-        if (!res.ok) {
-          showError(res.error);
-          return;
-        }
-        hideError();
-        editingRuleId = null;
-        renderState(res.state);
-      });
-
-      const cancelBtn = document.createElement('button');
-      cancelBtn.type = 'button';
-      cancelBtn.className = 'btn-secondary';
-      cancelBtn.textContent = '取消';
-      cancelBtn.addEventListener('click', () => {
-        editingRuleId = null;
-        renderState(currentState);
-      });
-
-      editRow.append(editInput, saveBtn, cancelBtn);
-      li.appendChild(editRow);
-      rulesList.appendChild(li);
-      continue;
-    }
 
     const mainRow = document.createElement('div');
     mainRow.className = 'rule-main';
@@ -306,19 +396,76 @@ function renderRules(state) {
       renderState(res.state);
     });
 
+    if (editingRuleId === rule.id) {
+      const editInput = document.createElement('input');
+      editInput.type = 'text';
+      editInput.className = 'rule-edit-input';
+      editInput.value = rule.pattern;
+      editInput.setAttribute('aria-label', '编辑规则');
+
+      const commitEdit = async () => {
+        const res = await sendMessage({
+          type: 'updateRule',
+          id: rule.id,
+          pattern: editInput.value
+        });
+        if (!res.ok) {
+          showError(res.error);
+          return;
+        }
+        hideError();
+        editingRuleId = null;
+        renderState(res.state);
+      };
+
+      const cancelEdit = () => {
+        editingRuleId = null;
+        renderState(currentState);
+      };
+
+      editInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          void commitEdit();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          cancelEdit();
+        }
+      });
+
+      left.append(toggle, editInput);
+
+      const actions = document.createElement('div');
+      actions.className = 'rule-actions rule-actions-editing';
+
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.className = 'btn-link';
+      saveBtn.textContent = '保存';
+      saveBtn.addEventListener('click', () => {
+        void commitEdit();
+      });
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'btn-link-muted';
+      cancelBtn.textContent = '取消';
+      cancelBtn.addEventListener('click', cancelEdit);
+
+      actions.append(saveBtn, cancelBtn);
+      mainRow.append(left, actions);
+      li.appendChild(mainRow);
+      rulesList.appendChild(li);
+      requestAnimationFrame(() => editInput.focus({ preventScroll: true }));
+      continue;
+    }
+
     const patternSpan = document.createElement('span');
     patternSpan.className = 'rule-pattern';
     patternSpan.textContent = rule.pattern;
     patternSpan.title = rule.pattern;
 
     left.append(toggle, patternSpan);
-    mainRow.appendChild(left);
-
-    const metaRow = document.createElement('div');
-    metaRow.className = 'rule-meta';
-
-    const countSpan = document.createElement('span');
-    countSpan.textContent = `今日 ${rule.todayCleaned} / 累计 ${rule.cleanedCount} 次`;
 
     const actions = document.createElement('div');
     actions.className = 'rule-actions';
@@ -347,8 +494,8 @@ function renderRules(state) {
     });
 
     actions.append(editBtn, deleteBtn);
-    metaRow.append(countSpan, actions);
-    li.append(mainRow, metaRow);
+    mainRow.append(left, actions);
+    li.appendChild(mainRow);
     rulesList.appendChild(li);
   }
 }
@@ -581,6 +728,13 @@ addRuleForm.addEventListener('submit', async (event) => {
     showError(err.message);
   }
 });
+statsPrevPageBtn.addEventListener('click', () => setStatsOverviewPage(0));
+statsNextPageBtn.addEventListener('click', () => setStatsOverviewPage(1));
+for (const dot of statsPageDots) {
+  dot.addEventListener('click', () => {
+    setStatsOverviewPage(Number(dot.dataset.statsPage));
+  });
+}
 
 resetStatsBtn.addEventListener('click', () => {
   resetStatsBtn.classList.add('hidden');
@@ -623,6 +777,7 @@ dismissInfoBtn.addEventListener('click', () => {
 
 async function init() {
   switchTab('rules');
+  setStatsOverviewPage(0);
   try {
     const [stateRes] = await Promise.all([sendMessage({ type: 'getState' }), fetchActiveTabUrl()]);
     if (!stateRes.ok) {

@@ -504,3 +504,52 @@ test('匹配网页时图标变绿、总开关关闭时图标变灰', async () =>
   assert.equal(defaultIconPath, 'icons/icon16.png');
   assert.equal(iconByTab.get(1), 'icons/icon16-green.png');
 });
+
+test('标签页不存在时通过回调消费 runtime.lastError 而不抛出未处理异常', async () => {
+  const mock = createMockChrome();
+  let lastErrorReadCount = 0;
+  let activeLastError = null;
+
+  Object.defineProperty(mock.chromeApi.runtime, 'lastError', {
+    get() {
+      if (activeLastError) {
+        lastErrorReadCount += 1;
+      }
+      return activeLastError;
+    }
+  });
+
+  mock.chromeApi.action = {
+    setIcon(details, callback) {
+      if (typeof details.tabId === 'number') {
+        activeLastError = { message: `No tab with id: ${details.tabId}.` };
+        callback?.();
+        activeLastError = null;
+        return;
+      }
+      callback?.();
+    }
+  };
+
+  mock.chromeApi.tabs = {
+    query(_queryInfo, callback) {
+      callback?.([{ id: 536131605, url: 'https://example.com/' }]);
+    },
+    get(tabId, callback) {
+      activeLastError = { message: `No tab with id: ${tabId}.` };
+      callback?.(undefined);
+      activeLastError = null;
+    }
+  };
+
+  const controller = createBackgroundController({
+    chromeApi: mock.chromeApi,
+    now: () => new Date('2026-11-25T19:10:00')
+  });
+
+  await controller.syncAllIcons();
+  await controller.refreshTabIconById(536131605);
+  await controller.refreshTabIcon({ id: -1, url: 'https://example.com/' });
+
+  assert.equal(lastErrorReadCount, 2);
+});
