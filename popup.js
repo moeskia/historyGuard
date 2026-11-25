@@ -70,6 +70,7 @@ const cancelClearRulesBtn = document.getElementById('cancelClearRulesBtn');
 const importRulesBtn = document.getElementById('importRulesBtn');
 const exportRulesBtn = document.getElementById('exportRulesBtn');
 const importRulesFileInput = document.getElementById('importRulesFileInput');
+const appVersionBadge = document.getElementById('appVersionBadge');
 
 let currentState = null;
 let activeLocale = resolveLocale('auto');
@@ -250,6 +251,13 @@ function renderSettings(state) {
   exportRulesBtn.disabled = !hasRules;
   if (!hasRules) {
     clearRulesConfirmGroup.classList.add('hidden');
+  }
+  if (appVersionBadge) {
+    const version =
+      typeof chrome !== 'undefined' && typeof chrome.runtime?.getManifest === 'function'
+        ? chrome.runtime.getManifest()?.version
+        : null;
+    appVersionBadge.textContent = `v${version || '1.1.0'}`;
   }
 }
 

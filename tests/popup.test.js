@@ -188,6 +188,7 @@ async function mountPopup(
     },
     tabs: { async query() { return [{ id: 1, url: activeTabUrl }]; } },
     runtime: {
+      getManifest: () => ({ version: '1.1.0' }),
       async sendMessage(message) {
         messages.push(structuredClone(message));
         return structuredClone(await controller.handleMessage(message));
@@ -399,7 +400,7 @@ test('快捷新增、导入去重、导出及批量启停仍可用，隐藏列�
   assert.equal(exported.version, 1);
   assert.equal(exported.rules.length, 3);
   assert.deepEqual(revoked, ['blob:export-test']);
-  assert.equal(ui.created.find((element) => element.tagName === 'a').clickCount, 1);
+  assert.equal(ui.created.find((element) => element.tagName === 'a' && element.download).clickCount, 1);
   await ui.fire('pauseAllRulesBtn');
   await ui.fire('tabRulesBtn');
   assert.equal(ui.get('rulesList').children.length, 3);
@@ -445,6 +446,11 @@ test('支持在设置中切换语言并实时本地化界面、错误提示与�
   assert.equal(ui.get('tabStatsBtn').textContent, 'Stats');
   assert.equal(ui.get('tabSettingsBtn').textContent, 'Settings');
   assert.equal(ui.get('settingsRuleCountBadge').textContent, '2 rules');
+  assert.equal(ui.get('appVersionBadge').textContent, 'v1.1.0');
+  assert.equal(ui.get('aboutProjectName').textContent, 'HistoryGuard');
+  assert.equal(ui.get('aboutPrivacyLink').textContent, 'Privacy Policy');
+  assert.match(ui.get('cleanHistoryOnAddOption').getAttribute('title'), /scans and removes existing matching history/);
+  assert.match(ui.get('quickAddModeField').getAttribute('title'), /Apex domains \(e\.g\. example\.com\)/);
   assert.match(ui.get('globalStatusText').textContent, /Active: automatically filtering/);
 
   await ui.fire('tabRulesBtn');

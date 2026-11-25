@@ -178,47 +178,47 @@
 
       <section id="settingsTabPanel" class="tab-panel hidden" role="tabpanel" aria-labelledby="tabSettingsBtn">
         <section class="card">
-          <h2 class="section-title" data-i18n="settingsLanguageTitle">语言</h2>
-          <div class="setting-field">
-            <label class="setting-label" for="languageSelect" data-i18n="languageLabel">界面语言</label>
-            <select id="languageSelect" class="select">
-              <option value="auto" data-i18n="languageAutoOption">跟随系统（自动）</option>
-              <option value="zh-CN">简体中文</option>
-              <option value="zh-TW">繁體中文</option>
-              <option value="en">English</option>
-              <option value="ja">日本語</option>
-              <option value="ko">한국어</option>
-              <option value="es">Español</option>
-              <option value="fr">Français</option>
-              <option value="de">Deutsch</option>
-            </select>
-            <p class="hint muted" data-i18n="languageHint">选择“跟随系统”时会自动匹配浏览器语言；切换后立即生效。</p>
-          </div>
+          <h2 class="section-title" data-i18n="settingsLanguageTitle">界面语言</h2>
+          <select id="languageSelect" class="select" aria-label="界面语言" data-i18n-aria-label="settingsLanguageTitle">
+            <option value="auto" data-i18n="languageAutoOption">跟随系统（自动）</option>
+            <option value="zh-CN">简体中文</option>
+            <option value="zh-TW">繁體中文</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+          </select>
         </section>
 
         <section class="card">
-          <h2 class="section-title" data-i18n="settingsCleanupTitle">清理行为</h2>
-          <label class="option-row">
+          <h2 class="section-title" data-i18n="settingsBehaviorTitle">行为</h2>
+          <label
+            id="cleanHistoryOnAddOption"
+            class="option-row"
+            title="开启后，每次新增规则都会扫描现有历史记录并清除匹配网址；关闭则仅过滤后续新访问。"
+            data-i18n-title="cleanHistoryOnAddHint"
+          >
             <input id="cleanHistoryOnAddToggle" type="checkbox" />
             <span data-i18n="cleanHistoryOnAddLabel">添加规则后立即删除匹配的历史记录</span>
           </label>
-          <p class="hint muted" data-i18n="cleanHistoryOnAddHint">开启后，每次新增规则都会扫描现有历史记录并清除匹配网址；关闭则仅过滤后续新访问。</p>
-        </section>
-
-        <section class="card">
-          <h2 class="section-title" data-i18n="settingsQuickAddTitle">当前网页快捷添加</h2>
           <label class="option-row">
             <input id="showQuickAddToggle" type="checkbox" />
             <span data-i18n="showQuickAddLabel">在规则管理页显示“当前网页快捷添加”</span>
           </label>
-          <div class="setting-field">
+          <div
+            id="quickAddModeField"
+            class="setting-field"
+            title="主域名（如 example.com）及 www. 会自动规范化为 *.example.com。"
+            data-i18n-title="quickAddModeHint"
+          >
             <label class="setting-label" for="quickAddModeSelect" data-i18n="quickAddModeLabel">默认生成规则格式</label>
             <select id="quickAddModeSelect" class="select">
               <option value="host" data-i18n="quickAddModeHost">*://当前主机/*（匹配 HTTP/HTTPS）</option>
               <option value="subdomain" data-i18n="quickAddModeSubdomain">*://*.当前主机/*（含子域名）</option>
               <option value="scheme" data-i18n="quickAddModeScheme">当前协议://当前主机/*（仅当前协议）</option>
             </select>
-            <p class="hint muted" data-i18n="quickAddModeHint">主域名（如 example.com）及 www. 会自动规范化为 *.example.com。</p>
           </div>
         </section>
 
@@ -245,6 +245,34 @@
             </div>
           </div>
         </section>
+
+        <footer class="settings-footer">
+          <a
+            id="aboutHomepageLink"
+            class="settings-footer-link"
+            href="https://github.com/moeskia/historyGuard"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <svg class="github-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path>
+            </svg>
+            <span id="aboutProjectName" data-i18n="appTitle">HistoryGuard</span>
+          </a>
+          <span class="settings-footer-sep" aria-hidden="true">·</span>
+          <a
+            id="aboutPrivacyLink"
+            class="settings-footer-link"
+            href="https://github.com/moeskia/historyGuard/blob/main/PRIVACY.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-i18n="aboutPrivacyLink"
+          >
+            隐私政策
+          </a>
+          <span class="settings-footer-sep" aria-hidden="true">·</span>
+          <span id="appVersionBadge" class="settings-footer-version">v1.1.0</span>
+        </footer>
       </section>
     </main>
     <script type="module" src="popup.js"></script>

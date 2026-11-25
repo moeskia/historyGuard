@@ -63,10 +63,9 @@
 | --- | --- |
 | `history` | 扫描历史记录、监听 `chrome.history.onVisited` 并在命中规则时调用 `chrome.history.deleteUrl` |
 | `storage` | 在 `chrome.storage.local` 中本地持久化保存规则、设置与统计计数 |
-| `activeTab` | 打开弹窗时读取当前活动标签页 URL，用于快捷添加规则 |
-| `tabs` | 监听标签页切换与更新以动态更新扩展栏图标状态（蓝 / 绿 / 灰） |
+| `tabs` | 监听标签页切换与更新以动态更新扩展栏图标状态（蓝 / 绿 / 灰），并在打开弹窗时读取当前标签页用于快捷添加 |
 
-> 不申请 `<all_urls>` 或网页内容脚本注入权限。
+> 不申请 `<all_urls>` 或网页内容脚本注入权限。详情见 [隐私政策](PRIVACY.md)。
 
 ---
 
