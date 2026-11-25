@@ -240,7 +240,7 @@ test('添加规则后立即扫描并删除匹配的历史记录并记录规则�
   );
   assert.equal(addRes.rule.cleanedCount, 2);
   assert.equal(addRes.rule.todayCleaned, 2);
-  assert.equal(addRes.rule.lastCleanedAt, '2026-11-25T07:00:00.000Z');
+  assert.equal(addRes.rule.lastCleanedAt, new Date('2026-11-25T15:00:00').toISOString());
   assert.equal(addRes.state.stats.totalCleaned, 2);
   assert.equal(addRes.state.stats.todayCleaned, 2);
 });
