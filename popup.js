@@ -122,21 +122,6 @@ function formatDateTime(isoString) {
   });
 }
 
-function createStatCell(label, valueText) {
-  const cell = document.createElement('div');
-  cell.className = 'rule-stat-cell';
-
-  const labelEl = document.createElement('span');
-  labelEl.textContent = label;
-
-  const valueEl = document.createElement('strong');
-  valueEl.textContent = valueText;
-  valueEl.title = valueText;
-
-  cell.append(labelEl, valueEl);
-  return cell;
-}
-
 function renderCurrentTabQuickAdd(state) {
   const showQuickAdd = state.showQuickAdd !== false;
   quickAddCard.classList.toggle('hidden', !showQuickAdd);
@@ -212,15 +197,19 @@ function renderStats(state) {
 
     header.append(patternSpan, statusBadge);
 
-    const metrics = document.createElement('div');
-    metrics.className = 'rule-stat-metrics';
-    metrics.append(
-      createStatCell('今日清理', `${todayCleaned} 次`),
-      createStatCell('累计清理', `${cleanedCount} 次`),
-      createStatCell('最近清理', formatDateTime(lastCleanedAt))
-    );
+    const metaRow = document.createElement('div');
+    metaRow.className = 'rule-meta';
 
-    li.append(header, metrics);
+    const countSpan = document.createElement('span');
+    countSpan.textContent = `今日 ${todayCleaned} / 累计 ${cleanedCount} 次`;
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'rule-stat-time';
+    timeSpan.textContent = `最近清理：${formatDateTime(lastCleanedAt)}`;
+
+    metaRow.append(countSpan, timeSpan);
+
+    li.append(header, metaRow);
     ruleStatsList.appendChild(li);
   }
 
@@ -646,6 +635,10 @@ async function init() {
     }
   } catch (err) {
     showError(err.message || '初始化失败');
+  } finally {
+    requestAnimationFrame(() => {
+      document.body.classList.add('ready');
+    });
   }
 }
 
